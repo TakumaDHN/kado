@@ -1846,3 +1846,145 @@ async def get_hourly_green_apples(
         "date": date,
         "data": hourly_apples
     }
+
+
+@app.get("/api/devices/{device_addr}/hourly-operation-rate")
+async def get_device_hourly_operation_rate(
+    device_addr: str,
+    date: str = Query(..., description="YYYY-MM-DD形式の日付"),
+    db: Session = Depends(get_db)
+):
+    """設備の時間帯別稼働率を取得（積上げ棒グラフ用）"""
+    device_addr = device_addr.upper()
+
+    jst = pytz.timezone('Asia/Tokyo')
+    utc = pytz.UTC
+
+    # 日付処理
+    try:
+        target_date = datetime.strptime(date, '%Y-%m-%d').date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="日付形式が不正です（YYYY-MM-DD）")
+
+    # 6:00～翌6:00の時間範囲を設定
+    start_time = jst.localize(datetime.combine(target_date, datetime.min.time()) + timedelta(hours=6))
+    end_time = start_time + timedelta(hours=24)
+
+    hourly_data = []
+    current_hour = start_time
+
+    while current_hour < end_time and current_hour <= datetime.now(jst):
+        next_hour = current_hour + timedelta(hours=1)
+
+        # この時間帯の稼働データを取得
+        total_running_minutes = 0
+        total_stop_yellow_minutes = 0
+        total_stop_red_minutes = 0
+        total_idle_minutes = 0
+
+        # この時間帯の履歴を取得
+        histories = db.query(DeviceHistory).filter(
+            DeviceHistory.device_addr == device_addr,
+            DeviceHistory.timestamp >= current_hour.astimezone(utc).replace(tzinfo=None),
+            DeviceHistory.timestamp < next_hour.astimezone(utc).replace(tzinfo=None)
+        ).order_by(DeviceHistory.timestamp).all()
+
+        # 直前の状態も取得
+        prev_history = db.query(DeviceHistory).filter(
+            DeviceHistory.device_addr == device_addr,
+            DeviceHistory.timestamp < current_hour.astimezone(utc).replace(tzinfo=None)
+        ).order_by(DeviceHistory.timestamp.desc()).first()
+
+        # 時間帯の終了時刻
+        period_end = min(next_hour, datetime.now(jst)).astimezone(utc).replace(tzinfo=None)
+
+        if not histories and not prev_history:
+            duration_minutes = (period_end - current_hour.astimezone(utc).replace(tzinfo=None)).total_seconds() / 60
+            total_idle_minutes += duration_minutes
+        else:
+            # 時間帯開始時点の状態を決定
+            if histories:
+                all_records = histories[:]
+            else:
+                all_records = []
+
+            if prev_history:
+                start_status = {
+                    'timestamp': current_hour.astimezone(utc).replace(tzinfo=None),
+                    'green': prev_history.green,
+                    'yellow': prev_history.yellow,
+                    'red': prev_history.red
+                }
+            elif all_records:
+                start_status = {
+                    'timestamp': current_hour.astimezone(utc).replace(tzinfo=None),
+                    'green': all_records[0].green,
+                    'yellow': all_records[0].yellow,
+                    'red': all_records[0].red
+                }
+            else:
+                start_status = {
+                    'timestamp': current_hour.astimezone(utc).replace(tzinfo=None),
+                    'green': False,
+                    'yellow': False,
+                    'red': False
+                }
+
+            # 時間計算用のレコードリスト
+            time_records = [start_status]
+            for h in all_records:
+                time_records.append({
+                    'timestamp': h.timestamp,
+                    'green': h.green,
+                    'yellow': h.yellow,
+                    'red': h.red
+                })
+
+            # 各レコード間の時間を計算
+            for idx in range(len(time_records)):
+                current_record = time_records[idx]
+
+                if idx < len(time_records) - 1:
+                    next_timestamp = time_records[idx + 1]['timestamp']
+                else:
+                    next_timestamp = period_end
+
+                duration_minutes = (next_timestamp - current_record['timestamp']).total_seconds() / 60
+                duration_minutes = max(0, duration_minutes)
+
+                if current_record['green']:
+                    total_running_minutes += duration_minutes
+                elif current_record['yellow']:
+                    total_stop_yellow_minutes += duration_minutes
+                elif current_record['red']:
+                    total_stop_red_minutes += duration_minutes
+                else:
+                    total_idle_minutes += duration_minutes
+
+        # 合計時間
+        total_minutes = total_running_minutes + total_stop_yellow_minutes + total_stop_red_minutes + total_idle_minutes
+
+        # 割合を計算
+        if total_minutes > 0:
+            running_percent = round(total_running_minutes / total_minutes * 100, 1)
+            stop_yellow_percent = round(total_stop_yellow_minutes / total_minutes * 100, 1)
+            stop_red_percent = round(total_stop_red_minutes / total_minutes * 100, 1)
+            idle_percent = round(total_idle_minutes / total_minutes * 100, 1)
+        else:
+            running_percent = stop_yellow_percent = stop_red_percent = idle_percent = 0
+
+        hourly_data.append({
+            "hour": current_hour.strftime('%H:00'),
+            "running": running_percent,
+            "stop_yellow": stop_yellow_percent,
+            "stop_red": stop_red_percent,
+            "idle": idle_percent
+        })
+
+        current_hour = next_hour
+
+    return {
+        "device_addr": device_addr,
+        "date": date,
+        "data": hourly_data
+    }

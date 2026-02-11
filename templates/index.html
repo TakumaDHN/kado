@@ -571,6 +571,37 @@
         </div>
     </div>
 
+    <!-- 設備ごとの時間帯別稼働率モーダル -->
+    <div class="modal fade" id="deviceHourlyOperationModal" tabindex="-1">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="deviceHourlyOperationTitle">時間帯別稼働率</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <!-- 日付選択 -->
+                    <div class="row mb-3">
+                        <div class="col-md-4">
+                            <label class="form-label">日付を選択</label>
+                            <input type="date" class="form-control" id="deviceHourlyDatePicker">
+                        </div>
+                        <div class="col-md-2 d-flex align-items-end">
+                            <button class="btn-modern w-100" onclick="loadDeviceHourlyData()">
+                                <i class="bi bi-search"></i> 表示
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- グラフ表示エリア -->
+                    <div class="chart-container" style="height: 400px;">
+                        <canvas id="deviceHourlyOperationChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Bootstrap Bundle with Popper -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
@@ -922,9 +953,12 @@
                         </div>
                     </div>
 
-                    <div class="mt-3 d-flex gap-2">
+                    <div class="mt-3 d-flex gap-2 flex-wrap">
                         <button class="btn-modern flex-grow-1" onclick="showOperationRate('${device.device_addr}', '${deviceName}')">
                             <i class="bi bi-graph-up"></i> 稼働率
+                        </button>
+                        <button class="btn-modern flex-grow-1" onclick="showDeviceHourlyOperation('${device.device_addr}', '${deviceName}')">
+                            <i class="bi bi-bar-chart"></i> 時間帯別
                         </button>
                         <button class="btn-secondary-modern flex-grow-1" onclick="showDataLogs('${device.device_addr}', '${deviceName}')">
                             <i class="bi bi-list-ul"></i> ログ
@@ -1885,6 +1919,9 @@
         // ========== 稼働率表示機能 ==========
 
         let operationRateChart = null;
+        let deviceHourlyOperationChart = null;
+        let currentDeviceAddr = null;
+        let currentDeviceName = null;
 
         // 稼働率モーダルを表示
         function showOperationRate(deviceAddr, deviceName) {
@@ -2037,6 +2074,170 @@
                     }
                 }
             });
+        }
+
+        // ========== 設備ごとの時間帯別稼働率 ==========
+
+        // 時間帯別稼働率モーダルを表示
+        function showDeviceHourlyOperation(deviceAddr, deviceName) {
+            currentDeviceAddr = deviceAddr;
+            currentDeviceName = deviceName;
+
+            document.getElementById('deviceHourlyOperationTitle').textContent = `時間帯別稼働率 - ${deviceName}`;
+
+            // デフォルトで今日の日付を設定（6:00より前なら前日）
+            const now = new Date();
+            const currentHour = now.getHours();
+            const targetDate = new Date(now);
+            if (currentHour < 6) {
+                targetDate.setDate(targetDate.getDate() - 1);
+            }
+            document.getElementById('deviceHourlyDatePicker').value = formatDateLocal(targetDate);
+
+            const modal = new bootstrap.Modal(document.getElementById('deviceHourlyOperationModal'));
+            modal.show();
+
+            // 初期データを読み込み
+            loadDeviceHourlyData();
+        }
+
+        // 時間帯別稼働率データを読み込み
+        async function loadDeviceHourlyData() {
+            if (!currentDeviceAddr) return;
+
+            const dateStr = document.getElementById('deviceHourlyDatePicker').value;
+            if (!dateStr) {
+                alert('日付を選択してください');
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/devices/${currentDeviceAddr}/hourly-operation-rate?date=${dateStr}`);
+                if (!response.ok) {
+                    throw new Error(`HTTPエラー: ${response.status}`);
+                }
+
+                const data = await response.json();
+
+                // グラフを作成または更新
+                const ctx = document.getElementById('deviceHourlyOperationChart').getContext('2d');
+
+                if (deviceHourlyOperationChart) {
+                    deviceHourlyOperationChart.destroy();
+                }
+
+                // 24時間分のラベルを作成（6:00～翌5:00）
+                const allHours = [];
+                for (let i = 0; i < 24; i++) {
+                    const hour = (6 + i) % 24;
+                    allHours.push(`${hour.toString().padStart(2, '0')}:00`);
+                }
+
+                // APIデータを時間帯ごとにマッピング
+                const dataMap = {};
+                data.data.forEach(d => {
+                    dataMap[d.hour] = d;
+                });
+
+                // 24時間分のデータを準備
+                const runningData = allHours.map(h => dataMap[h]?.running || 0);
+                const stopYellowData = allHours.map(h => dataMap[h]?.stop_yellow || 0);
+                const stopRedData = allHours.map(h => dataMap[h]?.stop_red || 0);
+                const idleData = allHours.map(h => dataMap[h]?.idle || 0);
+
+                deviceHourlyOperationChart = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: allHours,
+                        datasets: [
+                            {
+                                label: '稼働（緑）',
+                                data: runningData,
+                                backgroundColor: 'rgba(0, 255, 136, 0.7)',
+                                borderColor: '#00ff88',
+                                borderWidth: 1
+                            },
+                            {
+                                label: '停止（黄）',
+                                data: stopYellowData,
+                                backgroundColor: 'rgba(255, 193, 7, 0.7)',
+                                borderColor: '#ffc107',
+                                borderWidth: 1
+                            },
+                            {
+                                label: '停止（赤）',
+                                data: stopRedData,
+                                backgroundColor: 'rgba(220, 53, 69, 0.7)',
+                                borderColor: '#dc3545',
+                                borderWidth: 1
+                            },
+                            {
+                                label: '未稼働',
+                                data: idleData,
+                                backgroundColor: 'rgba(108, 117, 125, 0.7)',
+                                borderColor: '#6c757d',
+                                borderWidth: 1
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            x: {
+                                stacked: true,
+                                grid: {
+                                    color: 'rgba(255, 255, 255, 0.1)'
+                                },
+                                ticks: {
+                                    color: '#00ffff'
+                                }
+                            },
+                            y: {
+                                stacked: true,
+                                beginAtZero: true,
+                                max: 100,
+                                grid: {
+                                    color: 'rgba(255, 255, 255, 0.1)'
+                                },
+                                ticks: {
+                                    color: '#00ffff',
+                                    callback: function (value) {
+                                        return value + '%';
+                                    }
+                                },
+                                title: {
+                                    display: true,
+                                    text: '稼働率 (%)',
+                                    color: '#00ffff'
+                                }
+                            }
+                        },
+                        plugins: {
+                            legend: {
+                                position: 'bottom',
+                                labels: {
+                                    color: '#ffffff',
+                                    padding: 15
+                                }
+                            },
+                            tooltip: {
+                                mode: 'index',
+                                intersect: false,
+                                callbacks: {
+                                    label: function (context) {
+                                        return context.dataset.label + ': ' + context.parsed.y.toFixed(1) + '%';
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+
+            } catch (error) {
+                console.error('時間帯別稼働率取得エラー:', error);
+                alert('データの取得に失敗しました');
+            }
         }
 
         // ========== 現在の稼働率読み込み ==========
