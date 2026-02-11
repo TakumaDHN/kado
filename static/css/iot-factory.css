@@ -1,0 +1,1247 @@
+/* ============================================
+   IoT Factory Dashboard - Advanced Styling
+   先進的な工場IoTダッシュボードデザイン
+   ============================================ */
+
+/* カスタムプロパティ（CSS変数） */
+:root {
+    /* カラーパレット */
+    --bg-primary: #0a0e27;
+    --bg-secondary: #141937;
+    --bg-card: rgba(20, 25, 55, 0.6);
+    --bg-card-hover: rgba(30, 40, 70, 0.8);
+
+    /* アクセントカラー */
+    --accent-cyan: #00d9ff;
+    --accent-blue: #0066ff;
+    --accent-purple: #7b2cbf;
+    --accent-pink: #ff006e;
+
+    /* ステータスカラー */
+    --status-running: #00ff88;
+    --status-warning: #ffd60a;
+    --status-stop: #ff0054;
+    --status-idle: #6c757d;
+
+    /* テキストカラー */
+    --text-primary: #ffffff;
+    --text-secondary: #b0b8c9;
+    --text-muted: #6c7a8a;
+
+    /* ボーダー・影 */
+    --border-color: rgba(0, 217, 255, 0.2);
+    --glow-cyan: 0 0 20px rgba(0, 217, 255, 0.5);
+    --glow-blue: 0 0 15px rgba(0, 102, 255, 0.4);
+    --glow-green: 0 0 20px rgba(0, 255, 136, 0.6);
+    --glow-red: 0 0 20px rgba(255, 0, 84, 0.6);
+
+    /* アニメーション */
+    --transition-fast: 0.2s ease-in-out;
+    --transition-normal: 0.3s ease-in-out;
+    --transition-slow: 0.5s ease-in-out;
+}
+
+/* ============================================
+   グローバルスタイル
+   ============================================ */
+
+body {
+    background: linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
+    background-attachment: fixed;
+    color: var(--text-primary);
+    font-family: 'Inter', 'Segoe UI', Tahoma, sans-serif;
+    min-height: 100vh;
+    position: relative;
+    overflow-x: hidden;
+}
+
+/* 背景アニメーション用のグリッド */
+body::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-image:
+        linear-gradient(rgba(0, 217, 255, 0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0, 217, 255, 0.03) 1px, transparent 1px);
+    background-size: 50px 50px;
+    pointer-events: none;
+    z-index: 0;
+}
+
+.container-fluid {
+    position: relative;
+    z-index: 1;
+}
+
+/* ============================================
+   ヘッダー
+   ============================================ */
+
+.header-modern {
+    background: rgba(20, 25, 55, 0.8);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--border-color);
+    box-shadow: 0 4px 30px rgba(0, 0, 0, 0.3);
+    padding: 1.5rem 0;
+    margin-bottom: 2rem;
+}
+
+.header-title {
+    font-size: 2rem;
+    font-weight: 700;
+    background: linear-gradient(135deg, var(--accent-cyan) 0%, var(--accent-blue) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    text-shadow: var(--glow-cyan);
+    letter-spacing: 1px;
+    margin: 0;
+}
+
+.header-subtitle {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    font-weight: 400;
+    margin-top: 0.3rem;
+}
+
+/* 接続状態バッジ */
+.connection-status-badge {
+    display: inline-flex;
+    align-items: center;
+    background: rgba(20, 25, 55, 0.8);
+    padding: 0.6rem 1.2rem;
+    border-radius: 25px;
+    border: 1px solid rgba(108, 117, 125, 0.4);
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    transition: all var(--transition-normal);
+}
+
+.connection-status-badge.connected {
+    background: rgba(0, 255, 136, 0.15);
+    border-color: var(--status-running);
+    color: var(--status-running);
+    box-shadow: 0 0 15px rgba(0, 255, 136, 0.3);
+    animation: connectionPulse 2s ease-in-out infinite;
+}
+
+.connection-status-badge.disconnected {
+    background: rgba(255, 0, 84, 0.15);
+    border-color: var(--status-stop);
+    color: var(--status-stop);
+    box-shadow: 0 0 15px rgba(255, 0, 84, 0.2);
+}
+
+.connection-status-badge i {
+    margin-right: 0.5rem;
+    font-size: 1rem;
+}
+
+@keyframes connectionPulse {
+    0%, 100% {
+        box-shadow: 0 0 15px rgba(0, 255, 136, 0.3);
+    }
+    50% {
+        box-shadow: 0 0 25px rgba(0, 255, 136, 0.6);
+    }
+}
+
+/* GreenApple獲得数表示 */
+.green-apple-container {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    background: linear-gradient(135deg, rgba(0, 255, 136, 0.1), rgba(50, 205, 50, 0.1));
+    padding: 0.5rem 1rem;
+    border-radius: 12px;
+    border: 2px solid rgba(0, 255, 136, 0.4);
+    box-shadow: 0 0 20px rgba(0, 255, 136, 0.3);
+}
+
+.green-apple-label {
+    font-size: 0.65rem;
+    color: var(--status-running);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-weight: 700;
+    margin-bottom: 0.3rem;
+}
+
+.green-apple-display {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+    justify-content: center;
+    min-height: 28px;
+    align-items: center;
+}
+
+.green-apple {
+    font-size: 1.5rem;
+    animation: appleFloat 3s ease-in-out infinite;
+    filter: drop-shadow(0 2px 4px rgba(0, 255, 136, 0.5));
+}
+
+.green-apple:nth-child(2n) {
+    animation-delay: 0.5s;
+}
+
+.green-apple:nth-child(3n) {
+    animation-delay: 1s;
+}
+
+@keyframes appleFloat {
+    0%, 100% {
+        transform: translateY(0px);
+    }
+    50% {
+        transform: translateY(-5px);
+    }
+}
+
+/* モバイル表示時の調整 */
+@media (max-width: 768px) {
+    .green-apple-container {
+        padding: 0.4rem 0.8rem;
+    }
+
+    .green-apple-label {
+        font-size: 0.6rem;
+    }
+
+    .green-apple {
+        font-size: 1.2rem;
+    }
+}
+
+/* 時間帯別GreenApple表示 */
+.hourly-apple-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 1rem;
+    padding: 0.5rem;
+}
+
+.hourly-apple-item {
+    background: linear-gradient(135deg, rgba(0, 217, 255, 0.05), rgba(0, 102, 255, 0.05));
+    border: 1px solid rgba(0, 217, 255, 0.2);
+    border-radius: 12px;
+    padding: 1rem;
+    transition: all var(--transition-normal);
+}
+
+.hourly-apple-item:hover {
+    background: linear-gradient(135deg, rgba(0, 217, 255, 0.1), rgba(0, 102, 255, 0.1));
+    border-color: rgba(0, 217, 255, 0.4);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 217, 255, 0.2);
+}
+
+.hourly-apple-item.has-apples {
+    background: linear-gradient(135deg, rgba(0, 255, 136, 0.1), rgba(50, 205, 50, 0.05));
+    border-color: rgba(0, 255, 136, 0.3);
+}
+
+.hourly-apple-item.has-apples:hover {
+    background: linear-gradient(135deg, rgba(0, 255, 136, 0.15), rgba(50, 205, 50, 0.1));
+    border-color: rgba(0, 255, 136, 0.5);
+    box-shadow: 0 4px 12px rgba(0, 255, 136, 0.3);
+}
+
+.hourly-apple-time {
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: var(--accent-cyan);
+    margin-bottom: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.hourly-apple-time i {
+    font-size: 1rem;
+}
+
+.hourly-apple-rate {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    margin-bottom: 0.5rem;
+}
+
+.hourly-apple-display {
+    display: flex;
+    gap: 0.3rem;
+    flex-wrap: wrap;
+    min-height: 32px;
+    align-items: center;
+}
+
+.hourly-apple-icon {
+    font-size: 1.8rem;
+    animation: appleFloat 3s ease-in-out infinite;
+    filter: drop-shadow(0 2px 4px rgba(0, 255, 136, 0.5));
+}
+
+.hourly-apple-icon:nth-child(2n) {
+    animation-delay: 0.3s;
+}
+
+.hourly-apple-icon:nth-child(3n) {
+    animation-delay: 0.6s;
+}
+
+.hourly-apple-icon:nth-child(4n) {
+    animation-delay: 0.9s;
+}
+
+.hourly-apple-icon:nth-child(5n) {
+    animation-delay: 1.2s;
+}
+
+.no-apples-text {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    font-style: italic;
+}
+
+/* GreenApple収穫ルール表示 */
+.apple-harvest-rules {
+    background: linear-gradient(135deg, rgba(0, 255, 136, 0.05), rgba(50, 205, 50, 0.05));
+    border: 1px solid rgba(0, 255, 136, 0.2);
+    border-radius: 12px;
+    padding: 1rem;
+}
+
+.rules-title {
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: var(--status-running);
+    margin-bottom: 0.8rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.rules-title i {
+    font-size: 1.1rem;
+}
+
+.rules-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 0.5rem;
+}
+
+.rule-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.6rem 0.8rem;
+    border-radius: 8px;
+    border: 1px solid;
+    transition: all var(--transition-fast);
+}
+
+.rule-item:hover {
+    transform: translateX(4px);
+    box-shadow: 0 2px 8px rgba(0, 255, 136, 0.3);
+}
+
+.rule-item.rule-excellent {
+    background: rgba(0, 255, 136, 0.15);
+    border-color: rgba(0, 255, 136, 0.4);
+}
+
+.rule-item.rule-great {
+    background: rgba(0, 255, 136, 0.12);
+    border-color: rgba(0, 255, 136, 0.35);
+}
+
+.rule-item.rule-good {
+    background: rgba(0, 255, 136, 0.09);
+    border-color: rgba(0, 255, 136, 0.3);
+}
+
+.rule-item.rule-ok {
+    background: rgba(0, 255, 136, 0.06);
+    border-color: rgba(0, 255, 136, 0.25);
+}
+
+.rule-condition {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.rule-reward {
+    font-size: 1.2rem;
+    line-height: 1;
+}
+
+/* モバイル表示時の調整 */
+@media (max-width: 768px) {
+    .rules-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .rule-item {
+        padding: 0.5rem 0.7rem;
+    }
+
+    .rule-condition {
+        font-size: 0.75rem;
+    }
+
+    .rule-reward {
+        font-size: 1rem;
+    }
+}
+
+/* ============================================
+   デバイスカード
+   ============================================ */
+
+.device-card {
+    background: var(--bg-card);
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    padding: 1.5rem;
+    transition: all var(--transition-normal);
+    position: relative;
+    overflow: hidden;
+    height: 100%;
+}
+
+.device-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 3px;
+    background: linear-gradient(90deg, var(--accent-cyan), var(--accent-blue), var(--accent-purple));
+    opacity: 0;
+    transition: opacity var(--transition-normal);
+}
+
+.device-card:hover {
+    background: var(--bg-card-hover);
+    border-color: var(--accent-cyan);
+    transform: translateY(-5px);
+    box-shadow: 0 10px 40px rgba(0, 217, 255, 0.2);
+}
+
+.device-card:hover::before {
+    opacity: 1;
+}
+
+/* ============================================
+   稼働中カードのアニメーション
+   ============================================ */
+
+.device-card.running {
+    border-color: var(--status-running);
+    box-shadow: 0 0 30px rgba(0, 255, 136, 0.3);
+    animation: runningCardPulse 3s ease-in-out infinite;
+}
+
+.device-card.running::before {
+    opacity: 1;
+    background: linear-gradient(90deg,
+        transparent,
+        var(--status-running),
+        transparent
+    );
+    animation: borderFlow 2s linear infinite;
+}
+
+.device-card.running::after {
+    content: '';
+    position: absolute;
+    top: -2px;
+    left: -2px;
+    right: -2px;
+    bottom: -2px;
+    background: linear-gradient(45deg,
+        transparent 30%,
+        rgba(0, 255, 136, 0.1) 50%,
+        transparent 70%
+    );
+    border-radius: 16px;
+    opacity: 0;
+    animation: shimmer 3s ease-in-out infinite;
+    pointer-events: none;
+    z-index: -1;
+}
+
+@keyframes runningCardPulse {
+    0%, 100% {
+        box-shadow: 0 0 20px rgba(0, 255, 136, 0.2), 0 4px 30px rgba(0, 0, 0, 0.3);
+    }
+    50% {
+        box-shadow: 0 0 40px rgba(0, 255, 136, 0.5), 0 4px 30px rgba(0, 0, 0, 0.3);
+    }
+}
+
+@keyframes borderFlow {
+    0% {
+        transform: translateX(-100%);
+    }
+    100% {
+        transform: translateX(100%);
+    }
+}
+
+@keyframes shimmer {
+    0%, 100% {
+        opacity: 0;
+    }
+    50% {
+        opacity: 1;
+    }
+}
+
+.device-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 1rem;
+}
+
+.device-name {
+    font-size: 1.3rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0;
+}
+
+.device-location {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    margin-top: 0.3rem;
+}
+
+.device-status-badge {
+    padding: 0.4rem 1rem;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border: 1px solid;
+}
+
+.device-status-badge.status-running {
+    background: rgba(0, 255, 136, 0.15);
+    color: var(--status-running);
+    border-color: var(--status-running);
+    box-shadow: var(--glow-green);
+    animation: statusBadgePulse 2s ease-in-out infinite;
+}
+
+@keyframes statusBadgePulse {
+    0%, 100% {
+        box-shadow: 0 0 15px rgba(0, 255, 136, 0.5);
+    }
+    50% {
+        box-shadow: 0 0 25px rgba(0, 255, 136, 0.8);
+    }
+}
+
+.device-status-badge.status-warning {
+    background: rgba(255, 214, 10, 0.15);
+    color: var(--status-warning);
+    border-color: var(--status-warning);
+    box-shadow: 0 0 15px rgba(255, 214, 10, 0.4);
+}
+
+.device-status-badge.status-stop {
+    background: rgba(255, 0, 84, 0.15);
+    color: var(--status-stop);
+    border-color: var(--status-stop);
+    box-shadow: var(--glow-red);
+}
+
+.device-status-badge.status-idle {
+    background: rgba(108, 117, 125, 0.15);
+    color: var(--status-idle);
+    border-color: var(--status-idle);
+}
+
+/* ライトインジケーター */
+.lights-container {
+    display: flex;
+    gap: 1rem;
+    margin: 1.5rem 0;
+    justify-content: center;
+}
+
+.light-indicator {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    border: 2px solid rgba(255, 255, 255, 0.1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    transition: all var(--transition-normal);
+}
+
+.light-indicator.active {
+    border-color: currentColor;
+}
+
+.light-indicator.active.red {
+    background: radial-gradient(circle, rgba(255, 0, 84, 0.4), transparent);
+    color: var(--status-stop);
+    box-shadow: var(--glow-red), inset 0 0 20px rgba(255, 0, 84, 0.3);
+}
+
+.light-indicator.active.yellow {
+    background: radial-gradient(circle, rgba(255, 214, 10, 0.4), transparent);
+    color: var(--status-warning);
+    box-shadow: 0 0 20px rgba(255, 214, 10, 0.6), inset 0 0 20px rgba(255, 214, 10, 0.3);
+}
+
+.light-indicator.active.green {
+    background: radial-gradient(circle, rgba(0, 255, 136, 0.4), transparent);
+    color: var(--status-running);
+    box-shadow: var(--glow-green), inset 0 0 20px rgba(0, 255, 136, 0.3);
+    animation: greenLightPulse 2s ease-in-out infinite;
+}
+
+@keyframes greenLightPulse {
+    0%, 100% {
+        box-shadow: 0 0 20px rgba(0, 255, 136, 0.6), inset 0 0 20px rgba(0, 255, 136, 0.3);
+        transform: scale(1);
+    }
+    50% {
+        box-shadow: 0 0 40px rgba(0, 255, 136, 0.9), 0 0 60px rgba(0, 255, 136, 0.6), inset 0 0 30px rgba(0, 255, 136, 0.5);
+        transform: scale(1.05);
+    }
+}
+
+.light-indicator.inactive {
+    background: rgba(50, 50, 50, 0.3);
+    color: var(--text-muted);
+}
+
+/* バッテリーインジケーター */
+.battery-container {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: rgba(0, 0, 0, 0.3);
+    padding: 0.5rem 1rem;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.battery-icon {
+    font-size: 1.2rem;
+}
+
+.battery-text {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+/* 稼働率表示 */
+.operation-rate-container {
+    background: linear-gradient(135deg, rgba(0, 217, 255, 0.1), rgba(0, 102, 255, 0.1));
+    border: 1px solid rgba(0, 217, 255, 0.3);
+    border-radius: 12px;
+    padding: 1rem;
+    margin: 1rem 0;
+    transition: all var(--transition-normal);
+}
+
+.device-card.running .operation-rate-container {
+    background: linear-gradient(135deg, rgba(0, 255, 136, 0.15), rgba(0, 217, 255, 0.1));
+    border-color: rgba(0, 255, 136, 0.4);
+    animation: rateGlow 3s ease-in-out infinite;
+}
+
+@keyframes rateGlow {
+    0%, 100% {
+        box-shadow: 0 0 10px rgba(0, 255, 136, 0.2);
+    }
+    50% {
+        box-shadow: 0 0 20px rgba(0, 255, 136, 0.4);
+    }
+}
+
+.operation-rate-title {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 0.5rem;
+}
+
+.operation-rate-value {
+    font-size: 2rem;
+    font-weight: 700;
+    background: linear-gradient(135deg, var(--accent-cyan), var(--accent-blue));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.operation-rate-detail {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-top: 0.3rem;
+}
+
+/* デバイスメタ情報 */
+.device-meta-info {
+    background: rgba(0, 0, 0, 0.2);
+    padding: 0.75rem;
+    border-radius: 8px;
+}
+
+.device-meta-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+    font-size: 0.85rem;
+}
+
+.device-meta-item:last-child {
+    margin-bottom: 0;
+}
+
+.device-meta-item i {
+    color: var(--accent-cyan);
+    font-size: 1rem;
+    min-width: 20px;
+}
+
+.device-meta-label {
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.device-meta-value {
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+/* ボタン */
+.btn-modern {
+    background: rgba(0, 217, 255, 0.1);
+    border: 1px solid var(--accent-cyan);
+    color: var(--accent-cyan);
+    border-radius: 8px;
+    padding: 0.5rem 1rem;
+    font-size: 0.85rem;
+    font-weight: 500;
+    transition: all var(--transition-fast);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.btn-modern:hover {
+    background: var(--accent-cyan);
+    color: var(--bg-primary);
+    box-shadow: var(--glow-cyan);
+    transform: translateY(-2px);
+}
+
+/* アイコンボタン */
+.btn-icon {
+    background: rgba(0, 217, 255, 0.1);
+    border: 1px solid rgba(0, 217, 255, 0.3);
+    color: var(--accent-cyan);
+    border-radius: 8px;
+    padding: 0.5rem 0.75rem;
+    font-size: 1rem;
+    transition: all var(--transition-fast);
+    cursor: pointer;
+}
+
+.btn-icon:hover {
+    background: rgba(0, 217, 255, 0.2);
+    border-color: var(--accent-cyan);
+    box-shadow: 0 0 15px rgba(0, 217, 255, 0.3);
+    transform: translateY(-2px);
+}
+
+.btn-icon.active {
+    background: var(--accent-cyan);
+    color: var(--bg-primary);
+    border-color: var(--accent-cyan);
+    box-shadow: var(--glow-cyan);
+}
+
+/* 列数選択 */
+.column-selector {
+    display: flex;
+    gap: 0.25rem;
+    background: rgba(20, 25, 55, 0.6);
+    padding: 0.25rem;
+    border-radius: 10px;
+    border: 1px solid var(--border-color);
+}
+
+.column-selector .btn-icon {
+    border: none;
+    padding: 0.4rem 0.6rem;
+    border-radius: 6px;
+    font-size: 0.9rem;
+}
+
+.column-selector .btn-icon:hover {
+    transform: none;
+}
+
+.btn-secondary-modern {
+    background: rgba(108, 117, 125, 0.1);
+    border: 1px solid var(--status-idle);
+    color: var(--text-secondary);
+}
+
+.btn-secondary-modern:hover {
+    background: rgba(108, 117, 125, 0.3);
+    border-color: var(--text-secondary);
+    color: var(--text-primary);
+}
+
+/* ============================================
+   モーダル
+   ============================================ */
+
+.modal-content {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    overflow: hidden;
+}
+
+.modal-header {
+    background: linear-gradient(135deg, #0f1e3c, #142341);
+    border-bottom: 1px solid var(--border-color);
+    padding: 1.5rem;
+    position: relative;
+    z-index: 100;
+}
+
+.modal-title {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.modal-body {
+    padding: 1.5rem;
+    background: var(--bg-secondary);
+    position: relative;
+    z-index: 1;
+    max-height: calc(90vh - 180px);
+    overflow-y: auto;
+}
+
+.modal-footer {
+    background: var(--bg-secondary);
+    border-top: 1px solid var(--border-color);
+    padding: 1rem 1.5rem;
+}
+
+.btn-close {
+    filter: invert(1);
+    opacity: 0.7;
+}
+
+.btn-close:hover {
+    opacity: 1;
+}
+
+/* ============================================
+   テーブル
+   ============================================ */
+
+.table {
+    color: var(--text-primary);
+}
+
+.table thead th {
+    background: rgba(0, 217, 255, 0.1);
+    border-color: var(--border-color);
+    color: var(--accent-cyan);
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 0.75rem;
+    letter-spacing: 1px;
+    padding: 1rem;
+}
+
+.table tbody td {
+    border-color: rgba(255, 255, 255, 0.05);
+    padding: 0.75rem 1rem;
+    color: var(--text-secondary);
+}
+
+.table-striped tbody tr:nth-of-type(odd) {
+    background-color: rgba(255, 255, 255, 0.02);
+}
+
+.table-striped tbody tr:nth-of-type(odd):not(.log-table tbody tr):not(.operation-rate-table tbody tr) {
+    background-color: rgba(255, 255, 255, 0.02);
+}
+
+.table-hover tbody tr:hover {
+    background-color: rgba(0, 217, 255, 0.05);
+    color: var(--text-primary);
+}
+
+/* Bootstrap デフォルトの白背景を強制的に上書き */
+.modal-body .table {
+    --bs-table-bg: transparent;
+    --bs-table-striped-bg: transparent;
+    --bs-table-hover-bg: rgba(0, 217, 255, 0.1);
+}
+
+/* ログテーブル専用スタイル */
+.log-table-container {
+    max-height: 500px;
+    overflow-y: auto;
+    background: rgba(0, 0, 0, 0.4);
+    border-radius: 12px;
+    padding: 0.5rem;
+    border: 1px solid var(--border-color);
+}
+
+.log-table {
+    margin-bottom: 0;
+    background: transparent !important;
+}
+
+.log-table thead {
+    background: linear-gradient(135deg, #0a1a2e, #0d1f3a) !important;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.log-table thead th {
+    background: inherit !important;
+    border-bottom: 2px solid var(--accent-cyan) !important;
+    color: var(--accent-cyan) !important;
+    font-weight: 700;
+    padding: 1rem 0.75rem;
+}
+
+.log-table tbody tr,
+.log-table.table-striped tbody tr {
+    transition: all var(--transition-fast);
+    background-color: rgba(10, 14, 39, 0.6) !important;
+    background-image: none !important;
+}
+
+.log-table tbody tr:nth-of-type(odd),
+.log-table.table-striped tbody tr:nth-of-type(odd) {
+    background-color: rgba(20, 25, 55, 0.6) !important;
+    background-image: none !important;
+}
+
+.log-table tbody tr:nth-of-type(even),
+.log-table.table-striped tbody tr:nth-of-type(even) {
+    background-color: rgba(10, 14, 39, 0.6) !important;
+    background-image: none !important;
+}
+
+.log-table tbody tr:hover {
+    background-color: rgba(0, 217, 255, 0.2) !important;
+    background-image: none !important;
+    color: var(--text-primary);
+    transform: scale(1.01);
+}
+
+.log-table tbody td {
+    padding: 0.75rem;
+    border-color: rgba(0, 217, 255, 0.1) !important;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+.log-table tbody td:first-child {
+    color: var(--text-primary);
+    font-weight: 500;
+}
+
+/* 稼働率テーブル専用スタイル */
+.operation-rate-table-container {
+    background: rgba(0, 0, 0, 0.4);
+    border-radius: 12px;
+    padding: 0.5rem;
+    border: 1px solid var(--border-color);
+    margin-bottom: 1.5rem;
+}
+
+.operation-rate-table {
+    margin-bottom: 0;
+    background: transparent !important;
+}
+
+.operation-rate-table thead {
+    background: linear-gradient(135deg, #0a1a2e, #0d1f3a) !important;
+}
+
+.operation-rate-table thead th {
+    background: inherit !important;
+    border-bottom: 2px solid var(--accent-cyan) !important;
+    color: var(--accent-cyan) !important;
+    font-weight: 700;
+    padding: 1rem 0.75rem;
+    font-size: 0.9rem;
+}
+
+.operation-rate-table tbody tr,
+.operation-rate-table.table-striped tbody tr {
+    background-color: rgba(10, 14, 39, 0.6) !important;
+    background-image: none !important;
+    transition: all var(--transition-fast);
+}
+
+.operation-rate-table tbody tr:nth-of-type(odd),
+.operation-rate-table.table-striped tbody tr:nth-of-type(odd) {
+    background-color: rgba(20, 25, 55, 0.6) !important;
+    background-image: none !important;
+}
+
+.operation-rate-table tbody tr:nth-of-type(even),
+.operation-rate-table.table-striped tbody tr:nth-of-type(even) {
+    background-color: rgba(10, 14, 39, 0.6) !important;
+    background-image: none !important;
+}
+
+.operation-rate-table tbody tr:hover {
+    background-color: rgba(0, 217, 255, 0.2) !important;
+    background-image: none !important;
+    color: var(--text-primary);
+}
+
+.operation-rate-table tbody td {
+    padding: 0.75rem;
+    border-color: rgba(0, 217, 255, 0.1) !important;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+.operation-rate-table tbody tr:last-child {
+    background-color: rgba(0, 217, 255, 0.15) !important;
+    background-image: none !important;
+    font-weight: 600;
+}
+
+.operation-rate-table tbody tr:last-child td {
+    color: var(--text-primary);
+    border-top: 2px solid var(--accent-cyan) !important;
+    padding-top: 1rem;
+}
+
+/* ============================================
+   フォーム
+   ============================================ */
+
+.form-control, .form-select {
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+    transition: all var(--transition-fast);
+}
+
+.form-control:focus, .form-select:focus {
+    background: rgba(0, 0, 0, 0.4);
+    border-color: var(--accent-cyan);
+    box-shadow: 0 0 0 0.2rem rgba(0, 217, 255, 0.25);
+    color: var(--text-primary);
+}
+
+.form-control::placeholder {
+    color: var(--text-muted);
+}
+
+.form-label {
+    color: var(--text-secondary);
+    font-weight: 500;
+    font-size: 0.9rem;
+    margin-bottom: 0.5rem;
+}
+
+/* ============================================
+   簡易表示（5列表示用）
+   ============================================ */
+
+.device-card.compact-view {
+    padding: 1rem;
+}
+
+.device-card.compact-view .device-location,
+.device-card.compact-view .device-meta-info,
+.device-card.compact-view .btn-modern,
+.device-card.compact-view .battery-container {
+    display: none !important;
+}
+
+.device-card.compact-view .device-name {
+    font-size: 1rem;
+}
+
+.device-card.compact-view .lights-container {
+    gap: 0.5rem;
+    margin: 1rem 0;
+}
+
+.device-card.compact-view .light-indicator {
+    width: 35px;
+    height: 35px;
+}
+
+.device-card.compact-view .operation-rate-container {
+    padding: 0.75rem;
+    margin: 0.75rem 0;
+}
+
+.device-card.compact-view .operation-rate-title {
+    font-size: 0.65rem;
+}
+
+.device-card.compact-view .operation-rate-value {
+    font-size: 1.5rem;
+}
+
+.device-card.compact-view .operation-rate-detail {
+    font-size: 0.7rem;
+}
+
+.device-card.compact-view .timeline-container {
+    margin-top: 0.75rem;
+}
+
+.device-card.compact-view .timeline-label {
+    font-size: 0.65rem;
+}
+
+.device-card.compact-view .timeline-bar {
+    height: 15px;
+}
+
+/* 5列表示用の列幅 */
+.col-lg-2-4 {
+    flex: 0 0 auto;
+    width: 20%;
+}
+
+@media (max-width: 1199px) {
+    .col-lg-2-4 {
+        width: 50%;
+    }
+}
+
+/* ============================================
+   アニメーション
+   ============================================ */
+
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(30px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.device-card {
+    animation: fadeInUp 0.6s ease-out;
+    animation-fill-mode: both;
+}
+
+.device-card:nth-child(1) { animation-delay: 0.1s; }
+.device-card:nth-child(2) { animation-delay: 0.2s; }
+.device-card:nth-child(3) { animation-delay: 0.3s; }
+.device-card:nth-child(4) { animation-delay: 0.4s; }
+.device-card:nth-child(5) { animation-delay: 0.5s; }
+.device-card:nth-child(6) { animation-delay: 0.6s; }
+.device-card:nth-child(7) { animation-delay: 0.7s; }
+
+/* ============================================
+   レスポンシブ対応
+   ============================================ */
+
+@media (max-width: 768px) {
+    .header-title {
+        font-size: 1.5rem;
+    }
+
+    .device-card {
+        margin-bottom: 1rem;
+    }
+
+    .lights-container {
+        gap: 0.5rem;
+    }
+
+    .light-indicator {
+        width: 40px;
+        height: 40px;
+    }
+}
+
+/* ============================================
+   スクロールバー
+   ============================================ */
+
+::-webkit-scrollbar {
+    width: 10px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--bg-primary);
+}
+
+::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, var(--accent-cyan), var(--accent-blue));
+    border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--accent-cyan);
+}
+
+/* ============================================
+   追加ユーティリティ
+   ============================================ */
+
+.text-cyan {
+    color: var(--accent-cyan) !important;
+}
+
+.text-glow {
+    text-shadow: var(--glow-cyan);
+}
+
+.card-glow {
+    box-shadow: var(--glow-cyan);
+}
+
+.bg-glass {
+    background: var(--bg-card);
+    backdrop-filter: blur(10px);
+}

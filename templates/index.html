@@ -1,0 +1,2185 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ライトタワー監視システム | IoT Factory Dashboard</title>
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+    <!-- Custom IoT Factory CSS -->
+    <link rel="stylesheet" href="/static/css/iot-factory.css">
+
+    <style>
+        /* 追加のカスタムスタイル */
+        .chart-container {
+            position: relative;
+            height: 300px;
+            margin-top: 20px;
+        }
+
+        /* タイムライン表示 */
+        .timeline-container {
+            margin-top: 15px;
+        }
+
+        .timeline-label {
+            font-size: 0.75rem;
+            font-weight: bold;
+            margin-bottom: 3px;
+            color: var(--text-secondary);
+        }
+
+        .timeline-bar {
+            display: flex;
+            height: 20px;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 8px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+            border: 1px solid var(--border-color);
+        }
+
+        .timeline-segment {
+            position: relative;
+            transition: opacity 0.2s;
+        }
+
+        .timeline-segment:hover {
+            opacity: 0.8;
+            cursor: pointer;
+        }
+
+        .timeline-segment.green {
+            background-color: var(--status-running);
+        }
+
+        .timeline-segment.yellow {
+            background-color: var(--status-warning);
+        }
+
+        .timeline-segment.red {
+            background-color: var(--status-stop);
+        }
+
+        .timeline-segment.gray {
+            background-color: var(--status-idle);
+        }
+
+        .timeline-segment.white {
+            background-color: rgba(255, 255, 255, 0.1);
+            border: 1px solid var(--border-color);
+        }
+
+        /* バッテリー色 */
+        .battery-high {
+            color: var(--status-running);
+        }
+
+        .battery-medium {
+            color: var(--status-warning);
+        }
+
+        .battery-low {
+            color: var(--status-stop);
+        }
+
+        /* 日付入力フィールドのスタイル改善 */
+        input[type="date"] {
+            background-color: var(--card-bg);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+            padding: 0.5rem 0.75rem;
+            border-radius: 4px;
+            cursor: pointer;
+            position: relative;
+        }
+
+        input[type="date"]:hover {
+            border-color: var(--text-cyan);
+            box-shadow: 0 0 0 0.2rem rgba(0, 255, 255, 0.1);
+        }
+
+        input[type="date"]:focus {
+            border-color: var(--text-cyan);
+            outline: none;
+            box-shadow: 0 0 0 0.2rem rgba(0, 255, 255, 0.2);
+        }
+
+        /* カレンダーアイコンの視認性向上 */
+        input[type="date"]::-webkit-calendar-picker-indicator {
+            cursor: pointer;
+            filter: invert(1);
+            opacity: 0.8;
+            width: 20px;
+            height: 20px;
+            padding: 2px;
+            background-color: rgba(0, 255, 255, 0.1);
+            border-radius: 4px;
+        }
+
+        input[type="date"]::-webkit-calendar-picker-indicator:hover {
+            opacity: 1;
+            background-color: rgba(0, 255, 255, 0.2);
+        }
+    </style>
+</head>
+
+<body>
+    <!-- モダンヘッダー -->
+    <header class="header-modern">
+        <div class="container-fluid">
+            <div class="row align-items-center">
+                <div class="col-md-6">
+                    <h1 class="header-title">
+                        <i class="bi bi-broadcast-pin"></i> No RUNNING, No HARVEST ～稼働なしに収穫なし～
+                    </h1>
+                    <p class="header-subtitle">ライトタワー監視システム - リアルタイム設備稼働管理</p>
+                </div>
+                <div class="col-md-6 text-md-end">
+                    <div class="d-flex justify-content-md-end align-items-center gap-2 mt-3 mt-md-0 flex-wrap">
+                        <!-- GreenApple獲得数 -->
+                        <div class="green-apple-container">
+                            <span class="green-apple-label">本日のGREEN APPLE収穫量</span>
+                            <div class="green-apple-display" id="GreenAppleDisplay">
+                                <!-- リンゴアイコンがここに動的に追加される -->
+                            </div>
+                        </div>
+
+                        <!-- 接続ステータス -->
+                        <div class="connection-status-badge">
+                            <span id="connectionBadge">
+                                <i class="bi bi-wifi-off"></i> 未接続
+                            </span>
+                        </div>
+
+                        <!-- 列数選択 -->
+                        <div class="column-selector">
+                            <button class="btn-icon" onclick="setColumns(2)" id="col-2" title="2列表示">
+                                <i class="bi bi-grid-3x2"></i>
+                            </button>
+                            <button class="btn-icon active" onclick="setColumns(3)" id="col-3" title="3列表示">
+                                <i class="bi bi-grid-3x3"></i>
+                            </button>
+                            <button class="btn-icon" onclick="setColumns(4)" id="col-4" title="4列表示">
+                                <i class="bi bi-grid"></i>
+                            </button>
+                            <button class="btn-icon" onclick="setColumns(5)" id="col-5" title="5列簡易表示">
+                                <i class="bi bi-grid-1x2"></i>
+                            </button>
+                        </div>
+
+                        <button class="btn-icon" onclick="toggleFullscreen()" id="fullscreenBtn" title="全画面表示">
+                            <i class="bi bi-arrows-fullscreen" id="fullscreenIcon"></i>
+                        </button>
+
+                        <button class="btn-modern" onclick="showDeviceManagement()">
+                            <i class="bi bi-gear"></i> デバイス管理
+                        </button>
+
+                        <span class="text-secondary" id="currentTime" style="font-size: 0.9rem;"></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <div class="container-fluid mt-4">
+        <!-- 統計サマリー -->
+        <div class="row mb-4 g-3">
+            <div class="col">
+                <div class="device-card text-center">
+                    <div class="text-cyan" style="font-size: 2rem;"><i class="bi bi-hdd-network"></i></div>
+                    <div class="operation-rate-title mt-2">接続デバイス</div>
+                    <h2 id="deviceCount" class="text-cyan" style="font-size: 2.5rem; font-weight: 700;">0</h2>
+                </div>
+            </div>
+            <div class="col">
+                <div class="device-card text-center">
+                    <div style="font-size: 2rem; color: var(--status-running);"><i class="bi bi-play-circle"></i></div>
+                    <div class="operation-rate-title mt-2">稼働中</div>
+                    <h2 id="runningCount" style="font-size: 2.5rem; font-weight: 700; color: var(--status-running);">0
+                    </h2>
+                </div>
+            </div>
+            <div class="col">
+                <div class="device-card text-center">
+                    <div style="font-size: 2rem; color: var(--status-warning);"><i class="bi bi-pause-circle"></i></div>
+                    <div class="operation-rate-title mt-2">停止中(黄)</div>
+                    <h2 id="warningCount" style="font-size: 2.5rem; font-weight: 700; color: var(--status-warning);">0
+                    </h2>
+                </div>
+            </div>
+            <div class="col">
+                <div class="device-card text-center">
+                    <div style="font-size: 2rem; color: var(--status-stop);"><i class="bi bi-stop-circle"></i></div>
+                    <div class="operation-rate-title mt-2">停止中(赤)</div>
+                    <h2 id="errorCount" style="font-size: 2.5rem; font-weight: 700; color: var(--status-stop);">0</h2>
+                </div>
+            </div>
+            <div class="col">
+                <div class="device-card text-center">
+                    <div style="font-size: 2rem; color: var(--status-idle);"><i class="bi bi-dash-circle"></i></div>
+                    <div class="operation-rate-title mt-2">休止中</div>
+                    <h2 id="noneCount" style="font-size: 2.5rem; font-weight: 700; color: var(--status-idle);">0</h2>
+                </div>
+            </div>
+        </div>
+
+        <!-- デバイス一覧 -->
+        <div class="row">
+            <div class="col-12 mb-3">
+                <h3 class="text-cyan text-glow">
+                    <i class="bi bi-buildings"></i> 設備稼働状況（全7台）
+                </h3>
+            </div>
+            <div class="col-12">
+                <div id="deviceList" class="row g-3">
+                    <!-- デバイスカードがここに動的に追加されます -->
+                    <div class="col-12 text-center py-5" id="loadingMessage">
+                        <div class="spinner-border text-cyan" role="status">
+                            <span class="visually-hidden">読み込み中...</span>
+                        </div>
+                        <p class="mt-2 text-secondary">デバイス情報を読み込み中...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 全体稼働率セクション -->
+        <div class="row mt-4 g-3">
+            <!-- 現在の全体ステータス（円グラフ） -->
+            <div class="col-md-4">
+                <div class="device-card">
+                    <h5 class="text-cyan mb-3">
+                        <i class="bi bi-pie-chart"></i> 全体稼働状況（本日 6:00～現在の稼働時間割合）
+                    </h5>
+                    <div class="chart-container">
+                        <canvas id="overallStatusChart"></canvas>
+                    </div>
+                </div>
+            </div>
+            <!-- 時間帯別稼働推移（積上げ棒グラフ） -->
+            <div class="col-md-8">
+                <div class="device-card">
+                    <h5 class="text-cyan mb-3">
+                        <i class="bi bi-bar-chart"></i> 時間帯別稼働推移（稼働時間割合 - 本日 6:00～）
+                    </h5>
+                    <div class="chart-container">
+                        <canvas id="hourlyStatusChart"></canvas>
+                    </div>
+
+                    <!-- GREEN APPLE収穫ルール -->
+                    <div class="apple-harvest-rules mt-3">
+                        <div class="rules-title">
+                            <i class="bi bi-award"></i> GREEN APPLE収穫条件（各時間帯ごとに適用）
+                        </div>
+                        <div class="rules-grid">
+                            <div class="rule-item rule-ok">
+                                <span class="rule-condition">稼働率 30%超</span>
+                                <span class="rule-reward">🍏</span>
+                            </div>
+                            <div class="rule-item rule-good">
+                                <span class="rule-condition">稼働率 35%以上</span>
+                                <span class="rule-reward">🍏🍏</span>
+                            </div>
+                            <div class="rule-item rule-great">
+                                <span class="rule-condition">稼働率 40%以上</span>
+                                <span class="rule-reward">🍏🍏🍏</span>
+                            </div>
+                            <div class="rule-item rule-excellent">
+                                <span class="rule-condition">稼働率 50%以上</span>
+                                <span class="rule-reward">🍏🍏🍏🍏🍏</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 稼働率推移（折れ線グラフ） -->
+        <div class="row mt-3 g-3">
+            <div class="col-12">
+                <div class="device-card">
+                    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+                        <h5 class="text-cyan mb-0">
+                            <i class="bi bi-graph-up"></i> 稼働率推移
+                        </h5>
+                        <div class="d-flex align-items-center gap-2">
+                            <label class="text-muted small mb-0">期間:</label>
+                            <input type="date" id="operationStartDate" class="form-control form-control-sm"
+                                style="width: auto;" onchange="updateMonthlyCharts()">
+                            <span class="text-muted">〜</span>
+                            <input type="date" id="operationEndDate" class="form-control form-control-sm"
+                                style="width: auto;" onchange="updateMonthlyCharts()">
+                        </div>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="dailyOperationChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- GreenApple収穫量（棒グラフ） -->
+        <div class="row mt-3 g-3">
+            <div class="col-12">
+                <div class="device-card">
+                    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+                        <h5 class="text-cyan mb-0">
+                            <i class="bi bi-bar-chart-fill"></i> GREEN APPLE収穫量
+                        </h5>
+                        <div class="d-flex align-items-center gap-2">
+                            <label class="text-muted small mb-0">期間:</label>
+                            <input type="date" id="appleStartDate" class="form-control form-control-sm"
+                                style="width: auto;" onchange="updateMonthlyCharts()">
+                            <span class="text-muted">〜</span>
+                            <input type="date" id="appleEndDate" class="form-control form-control-sm"
+                                style="width: auto;" onchange="updateMonthlyCharts()">
+                        </div>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="dailyGreenAppleChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- デバイス管理モーダル -->
+    <div class="modal fade" id="deviceManagementModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">デバイス管理</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <button class="btn-modern mb-3" onclick="showAddDeviceForm()">
+                        <i class="bi bi-plus-circle"></i> 新規デバイス追加
+                    </button>
+
+                    <!-- デバイス一覧テーブル -->
+                    <div class="table-responsive">
+                        <table class="table table-striped table-hover">
+                            <thead>
+                                <tr>
+                                    <th>MACアドレス</th>
+                                    <th>設備名</th>
+                                    <th>設置場所</th>
+                                    <th>説明</th>
+                                    <th>表示順序</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="deviceManagementList">
+                                <tr>
+                                    <td colspan="6" class="text-center">読み込み中...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- デバイス追加/編集モーダル -->
+    <div class="modal fade" id="deviceFormModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="deviceFormTitle">デバイス追加</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="deviceForm">
+                        <input type="hidden" id="deviceFormMode" value="add">
+                        <input type="hidden" id="deviceFormOriginalAddr" value="">
+
+                        <div class="mb-3">
+                            <label for="deviceAddr" class="form-label">MACアドレス <span
+                                    class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="deviceAddr" placeholder="例: ECDA3BBE61E8"
+                                required maxlength="12">
+                            <small class="text-muted">12桁の16進数（コロンやハイフンなし）</small>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="deviceName" class="form-label">設備名 <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="deviceName" placeholder="例: 設備1号機" required>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="deviceLocation" class="form-label">設置場所</label>
+                            <input type="text" class="form-control" id="deviceLocation" placeholder="例: 製造ライン A">
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="deviceDescription" class="form-label">説明</label>
+                            <input type="text" class="form-control" id="deviceDescription" placeholder="例: メイン生産機">
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="deviceIndex" class="form-label">表示順序</label>
+                            <input type="number" class="form-control" id="deviceIndex" value="999" min="0">
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-secondary-modern" data-bs-dismiss="modal">
+                        <i class="bi bi-x-circle"></i> キャンセル
+                    </button>
+                    <button type="button" class="btn-modern" onclick="saveDevice()">
+                        <i class="bi bi-check-circle"></i> 保存
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 稼働率表示モーダル -->
+    <div class="modal fade" id="operationRateModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="operationRateTitle">稼働率表示</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="operationRateDeviceAddr" value="">
+
+                    <!-- 期間指定フォーム -->
+                    <div class="row mb-3">
+                        <div class="col-md-5">
+                            <label class="form-label">開始日</label>
+                            <input type="date" class="form-control" id="modalOperationStartDate">
+                        </div>
+                        <div class="col-md-5">
+                            <label class="form-label">終了日</label>
+                            <input type="date" class="form-control" id="modalOperationEndDate">
+                        </div>
+                        <div class="col-md-2 d-flex align-items-end">
+                            <button class="btn-modern w-100" onclick="calculateOperationRate()">
+                                <i class="bi bi-calculator"></i> 計算
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- 結果表示 -->
+                    <div id="operationRateResult" style="display: none;">
+                        <hr style="border-color: var(--border-color);">
+                        <h4 class="text-center mb-4">
+                            <span class="text-secondary">稼働率:</span> <span id="operationRateValue" class="text-cyan"
+                                style="font-size: 2.5rem; font-weight: 700;">0%</span>
+                        </h4>
+
+                        <!-- 詳細テーブル -->
+                        <div class="operation-rate-table-container">
+                            <table class="table table-sm operation-rate-table">
+                                <thead>
+                                    <tr>
+                                        <th>ステータス</th>
+                                        <th>時間（分）</th>
+                                        <th>割合</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="operationRateTable">
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- 円グラフ -->
+                        <div class="chart-container" style="height: 300px;">
+                            <canvas id="operationRatePieChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- データ受信ログモーダル -->
+    <div class="modal fade" id="dataLogsModal" tabindex="-1">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="dataLogsTitle">データ受信ログ</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3 d-flex justify-content-between align-items-center">
+                        <span class="text-secondary">最新 <strong class="text-cyan" id="logCount">0</strong>
+                            件のデータ受信履歴</span>
+                        <button class="btn-modern btn-sm" onclick="refreshDataLogs()">
+                            <i class="bi bi-arrow-clockwise"></i> 更新
+                        </button>
+                    </div>
+
+                    <!-- ログテーブル -->
+                    <div class="log-table-container">
+                        <table class="table table-sm log-table">
+                            <thead class="sticky-top">
+                                <tr>
+                                    <th>受信日時</th>
+                                    <th>ステータス</th>
+                                </tr>
+                            </thead>
+                            <tbody id="dataLogsTableBody">
+                                <tr>
+                                    <td colspan="2" class="text-center">
+                                        <div class="spinner-border spinner-border-sm" role="status">
+                                            <span class="visually-hidden">読み込み中...</span>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 時間帯別GreenApple収穫量モーダル -->
+    <div class="modal fade" id="hourlyGreenAppleModal" tabindex="-1">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="hourlyGreenAppleTitle">時間帯別GREEN APPLE収穫量</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="hourlyGreenAppleContainer" class="hourly-apple-grid">
+                        <!-- 時間帯別リンゴがここに動的に追加される -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap Bundle with Popper -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script>
+        // WebSocket接続
+        let ws;
+        let devices = {};
+        let overallStatusChart, hourlyStatusChart, dailyOperationChart, dailyGreenAppleChart;
+        let currentColumns = 3; // デフォルトは3列
+
+        // 列数設定を読み込み
+        function loadColumnSetting() {
+            const saved = localStorage.getItem('deviceColumns');
+            if (saved) {
+                currentColumns = parseInt(saved);
+                setColumns(currentColumns, false);
+            }
+        }
+
+        // 列数を設定
+        function setColumns(columns, save = true) {
+            currentColumns = columns;
+
+            // ボタンのアクティブ状態を更新
+            document.querySelectorAll('.column-selector .btn-icon').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            document.getElementById(`col-${columns}`).classList.add('active');
+
+            // 列数に応じたクラスを設定
+            let colClass = '';
+            let isCompact = false;
+            switch (columns) {
+                case 2:
+                    colClass = 'col-lg-6 col-md-6';
+                    break;
+                case 3:
+                    colClass = 'col-lg-4 col-md-6';
+                    break;
+                case 4:
+                    colClass = 'col-lg-3 col-md-6';
+                    break;
+                case 5:
+                    colClass = 'col-lg-2-4 col-md-6';
+                    isCompact = true;
+                    break;
+            }
+
+            // すべてのデバイスカードの列クラスと簡易表示クラスを更新
+            document.querySelectorAll('#deviceList > div').forEach(card => {
+                card.className = colClass;
+                const deviceCard = card.querySelector('.device-card');
+                if (deviceCard) {
+                    if (isCompact) {
+                        deviceCard.classList.add('compact-view');
+                    } else {
+                        deviceCard.classList.remove('compact-view');
+                    }
+                }
+            });
+
+            // 設定を保存
+            if (save) {
+                localStorage.setItem('deviceColumns', columns);
+            }
+        }
+
+        // 全画面表示の切り替え
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().then(() => {
+                    document.getElementById('fullscreenIcon').className = 'bi bi-fullscreen-exit';
+                }).catch(err => {
+                    console.error('全画面表示エラー:', err);
+                });
+            } else {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen().then(() => {
+                        document.getElementById('fullscreenIcon').className = 'bi bi-arrows-fullscreen';
+                    });
+                }
+            }
+        }
+
+        // 全画面モード変更イベントの監視
+        document.addEventListener('fullscreenchange', () => {
+            if (document.fullscreenElement) {
+                document.getElementById('fullscreenIcon').className = 'bi bi-fullscreen-exit';
+            } else {
+                document.getElementById('fullscreenIcon').className = 'bi bi-arrows-fullscreen';
+            }
+        });
+
+        // 現在時刻の更新
+        function updateTime() {
+            const now = new Date();
+            document.getElementById('currentTime').textContent = now.toLocaleString('ja-JP');
+        }
+        setInterval(updateTime, 1000);
+        updateTime();
+
+        // WebSocket接続
+        function connectWebSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
+
+            ws.onopen = () => {
+                console.log('WebSocket接続成功');
+                const badge = document.getElementById('connectionBadge');
+                badge.innerHTML = '<i class="bi bi-wifi"></i> 接続中';
+                badge.parentElement.className = 'connection-status-badge connected';
+
+                // 初期データを取得
+                fetchDevices();
+
+                // 現在の稼働率を定期的に更新（1分ごと）
+                setInterval(() => {
+                    Object.keys(devices).forEach(deviceAddr => {
+                        loadCurrentOperationRate(deviceAddr);
+                    });
+                }, 60000); // 60秒 = 1分
+            };
+
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                if (data.type === 'device_update') {
+                    updateDevice(data);
+                }
+            };
+
+            ws.onclose = () => {
+                console.log('WebSocket切断');
+                const badge = document.getElementById('connectionBadge');
+                badge.innerHTML = '<i class="bi bi-wifi-off"></i> 切断';
+                badge.parentElement.className = 'connection-status-badge disconnected';
+
+                // エラー通知を表示
+                showErrorNotification('サーバーとの接続が切断されました。再接続を試みています...');
+
+                // 5秒後に再接続
+                setTimeout(connectWebSocket, 5000);
+            };
+
+            ws.onerror = (error) => {
+                console.error('WebSocketエラー:', error);
+            };
+
+            // Ping送信（接続維持）
+            setInterval(() => {
+                if (ws.readyState === WebSocket.OPEN) {
+                    ws.send('ping');
+                }
+            }, 30000);
+        }
+
+        // デバイス一覧を取得
+        async function fetchDevices() {
+            try {
+                const response = await fetch('/api/devices');
+                const deviceList = await response.json();
+
+                // device_addrをキーとして使用
+                deviceList.forEach(device => {
+                    devices[device.device_addr] = device;
+                });
+
+                // ローディングメッセージを非表示
+                const loadingMsg = document.getElementById('loadingMessage');
+                if (loadingMsg) loadingMsg.style.display = 'none';
+
+                renderDevices();
+                updateStatistics();
+            } catch (error) {
+                console.error('デバイス取得エラー:', error);
+            }
+        }
+
+        // デバイス情報を更新
+        function updateDevice(data) {
+            // device_addrをキーとして使用（MACアドレス）
+            const key = data.device_addr || data.device_id;
+
+            // 既存のデバイス情報を保持しつつ更新
+            if (devices[key]) {
+                // 既存のデバイス名などを保持
+                devices[key] = {
+                    ...devices[key],
+                    device_id: data.device_id,
+                    device_addr: data.device_addr,
+                    device_name: data.device_name || devices[key].device_name,
+                    location: data.location || devices[key].location,
+                    description: data.description || devices[key].description,
+                    index: data.index !== undefined ? data.index : devices[key].index,
+                    gateway_id: data.gateway_id,
+                    battery: data.battery,
+                    red: data.red,
+                    yellow: data.yellow,
+                    green: data.green,
+                    status_code: data.status_code,
+                    status_text: data.status_text,
+                    last_update: data.timestamp,
+                    is_active: true
+                };
+            } else {
+                // 新規デバイス
+                devices[key] = {
+                    device_id: data.device_id,
+                    device_addr: data.device_addr,
+                    device_name: data.device_name || data.device_addr,
+                    location: data.location || '',
+                    description: data.description || '',
+                    index: data.index !== undefined ? data.index : 999,
+                    gateway_id: data.gateway_id,
+                    battery: data.battery,
+                    red: data.red,
+                    yellow: data.yellow,
+                    green: data.green,
+                    status_code: data.status_code,
+                    status_text: data.status_text,
+                    last_update: data.timestamp,
+                    is_active: true
+                };
+            }
+
+            renderDevices();
+            updateStatistics();
+            updateOverallCharts();  // 全体稼働率グラフを更新
+        }
+
+        // デバイスカードを描画
+        function renderDevices() {
+            const container = document.getElementById('deviceList');
+            container.innerHTML = '';
+
+            Object.values(devices).forEach(device => {
+                const card = createDeviceCard(device);
+                container.appendChild(card);
+
+                // タイムラインと現在の稼働率を読み込み
+                if (device.device_addr) {
+                    loadDeviceTimeline(device.device_addr);
+                    loadCurrentOperationRate(device.device_addr);
+                }
+            });
+        }
+
+        // デバイスカードを作成
+        function createDeviceCard(device) {
+            const col = document.createElement('div');
+
+            // 列数設定に応じてクラスを設定
+            switch (currentColumns) {
+                case 2:
+                    col.className = 'col-lg-6 col-md-6';
+                    break;
+                case 3:
+                    col.className = 'col-lg-4 col-md-6';
+                    break;
+                case 4:
+                    col.className = 'col-lg-3 col-md-6';
+                    break;
+                case 5:
+                    col.className = 'col-lg-2-4 col-md-6';
+                    break;
+                default:
+                    col.className = 'col-lg-4 col-md-6';
+            }
+
+            const status = device.status_text || getDeviceStatus(device);
+            // ライトの状態に基づいてバッジの色とクラスを決定
+            const statusBadgeClass = getStatusBadgeClass(device);
+            const isOffline = !device.is_active;
+            const isRunning = device.green; // 緑ライトが点灯している = 稼働中
+
+            // 最終更新日時をJST（日本時間）に変換
+            let lastUpdate = '未受信';
+            if (device.last_update) {
+                const utcDate = new Date(device.last_update + 'Z'); // Zを付けてUTCとして解釈
+                lastUpdate = utcDate.toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' });
+            }
+
+            const deviceName = device.device_name || device.device_addr || `#${device.device_id}`;
+            const location = device.location || '';
+            const description = device.description || '';
+
+            // カードのクラスを決定
+            let cardClasses = 'device-card';
+            if (isOffline) cardClasses += ' offline';
+            if (isRunning && !isOffline) cardClasses += ' running';
+            if (currentColumns === 5) cardClasses += ' compact-view';
+
+            col.innerHTML = `
+                <div class="${cardClasses}">
+                    <div class="device-header">
+                        <div>
+                            <div class="device-name">${deviceName}</div>
+                            <div class="device-location">
+                                <i class="bi bi-geo-alt"></i> ${location || '未設定'}
+                            </div>
+                        </div>
+                        <div>
+                            <span class="device-status-badge ${statusBadgeClass}">${status}</span>
+                        </div>
+                    </div>
+
+                    ${description ? `<p class="text-secondary" style="font-size: 0.85rem; margin-bottom: 1rem;">${description}</p>` : ''}
+
+                    <!-- ライトタワー表示 -->
+                    <div class="lights-container">
+                        <div class="light-indicator ${device.green ? 'active green' : 'inactive'}">
+                            <i class="bi bi-circle-fill"></i>
+                        </div>
+                        <div class="light-indicator ${device.yellow ? 'active yellow' : 'inactive'}">
+                            <i class="bi bi-circle-fill"></i>
+                        </div>
+                        <div class="light-indicator ${device.red ? 'active red' : 'inactive'}">
+                            <i class="bi bi-circle-fill"></i>
+                        </div>
+                    </div>
+
+                    <!-- バッテリー表示 -->
+                    <div class="battery-container mb-3">
+                        <div class="battery-icon ${getBatteryTextClass(device.battery)}">
+                            <i class="bi bi-battery-charging"></i>
+                        </div>
+                        <div class="battery-text ${getBatteryTextClass(device.battery)}">
+                            ${device.battery}%
+                        </div>
+                    </div>
+
+                    <!-- 現在の稼働率表示 -->
+                    <div class="operation-rate-container" id="current-rate-${device.device_addr}">
+                        <div class="operation-rate-title">本日稼働率 (6:00～現在)</div>
+                        <div class="d-flex align-items-baseline justify-content-between">
+                            <div class="operation-rate-value" id="rate-value-${device.device_addr}">--%</div>
+                            <div class="operation-rate-detail" id="rate-detail-${device.device_addr}">読込中...</div>
+                        </div>
+                    </div>
+
+                    <!-- 稼働状況タイムライン -->
+                    <div class="timeline-container" id="timeline-${device.device_addr}">
+                        <div class="timeline-label">日勤 (6:00-18:00)</div>
+                        <div class="timeline-bar" id="timeline-day-${device.device_addr}">
+                            <div class="timeline-segment gray" style="flex: 1;"></div>
+                        </div>
+                        <div class="timeline-label">夜勤 (18:00-翌6:00)</div>
+                        <div class="timeline-bar" id="timeline-night-${device.device_addr}">
+                            <div class="timeline-segment gray" style="flex: 1;"></div>
+                        </div>
+                    </div>
+
+                    <div class="mt-3 d-flex gap-2">
+                        <button class="btn-modern flex-grow-1" onclick="showOperationRate('${device.device_addr}', '${deviceName}')">
+                            <i class="bi bi-graph-up"></i> 稼働率
+                        </button>
+                        <button class="btn-secondary-modern flex-grow-1" onclick="showDataLogs('${device.device_addr}', '${deviceName}')">
+                            <i class="bi bi-list-ul"></i> ログ
+                        </button>
+                    </div>
+
+                    <div class="mt-3 pt-3 device-meta-info" style="border-top: 1px solid var(--border-color);">
+                        <div class="device-meta-item">
+                            <i class="bi bi-clock-history"></i>
+                            <span class="device-meta-label">最終更新:</span>
+                            <span class="device-meta-value">${lastUpdate}</span>
+                        </div>
+                        <div class="device-meta-item">
+                            <i class="bi bi-hdd-network"></i>
+                            <span class="device-meta-label">MAC:</span>
+                            <span class="device-meta-value">${device.device_addr}</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            return col;
+        }
+
+        // 新しいステータスバッジクラスの決定
+        function getStatusBadgeClass(device) {
+            if (device.green) return 'status-running';  // 緑ライト = 稼働中
+            if (device.yellow) return 'status-warning'; // 黄ライト = 停止中(黄)
+            if (device.red) return 'status-stop'; // 赤ライト = 停止中(赤)
+            return 'status-idle'; // 全消灯 = 休止中
+        }
+
+        // デバイスステータスを判定
+        function getDeviceStatus(device) {
+            // status_textがあればそれを使用
+            if (device.status_text) {
+                return device.status_text;
+            }
+            // なければライト状態から判定（後方互換性のため）
+            if (device.green) return 'Running';
+            if (device.yellow) return 'Stop';
+            if (device.red) return 'Stop';
+            return 'Not Working';
+        }
+
+        // ライトの状態に基づいてバッジの色を取得
+        function getStatusColorByLight(device) {
+            // ライトの状態で判定（緑→黄→赤の優先順位）
+            if (device.green) return 'bg-success';  // 緑ライト = 稼働中
+            if (device.yellow) return 'bg-warning'; // 黄ライト = 停止中(黄)
+            if (device.red) return 'bg-danger';     // 赤ライト = 停止中(赤)
+            return 'bg-secondary';                   // 全消灯 = Not Working
+        }
+
+        // ステータスに応じた色を取得（後方互換性のため残す）
+        function getStatusColor(status) {
+            const colors = {
+                'Running': 'bg-success',
+                '稼働中': 'bg-success',
+                'Stop': 'bg-danger',
+                '停止中': 'bg-danger',
+                'Not Working': 'bg-secondary',
+                '停止': 'bg-secondary'
+            };
+            return colors[status] || 'bg-secondary';
+        }
+
+        // バッテリー残量に応じたCSSクラスを取得
+        function getBatteryTextClass(battery) {
+            if (battery > 50) return 'battery-high';
+            if (battery > 20) return 'battery-medium';
+            return 'battery-low';
+        }
+
+        // 統計情報を更新
+        function updateStatistics() {
+            const deviceArray = Object.values(devices);
+
+            // アクティブなデバイスのみカウント
+            const activeDevices = deviceArray.filter(d => d.is_active);
+
+            document.getElementById('deviceCount').textContent = activeDevices.length + ' / 7';
+
+            // ライト状態から判定（アクティブなデバイスのみ）
+            const runningCount = activeDevices.filter(d => d.green).length;  // 緑ライト = 稼働中
+            const warningCount = activeDevices.filter(d => d.yellow).length; // 黄ライト = 停止中(黄)
+            const errorCount = activeDevices.filter(d => d.red).length;      // 赤ライト = 停止中(赤)
+            const noneCount = activeDevices.filter(d => !d.green && !d.yellow && !d.red).length; // 全消灯 = 休止中
+
+            document.getElementById('runningCount').textContent = runningCount;
+            document.getElementById('warningCount').textContent = warningCount;
+            document.getElementById('errorCount').textContent = errorCount;
+            document.getElementById('noneCount').textContent = noneCount;
+        }
+
+        // グラフ初期化
+        function initCharts() {
+            // 全体ステータス円グラフ
+            const overallStatusCtx = document.getElementById('overallStatusChart').getContext('2d');
+            overallStatusChart = new Chart(overallStatusCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['稼働中', 'STOP(黄)', 'STOP(赤)', '休止中'],
+                    datasets: [{
+                        data: [0, 0, 0, 0],
+                        backgroundColor: [
+                            'rgba(0, 255, 136, 0.7)',
+                            'rgba(255, 214, 10, 0.7)',
+                            'rgba(255, 0, 84, 0.7)',
+                            'rgba(108, 117, 125, 0.5)'
+                        ],
+                        borderColor: [
+                            '#00ff88',
+                            '#ffd60a',
+                            '#ff0054',
+                            '#6c757d'
+                        ],
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'right',
+                            labels: {
+                                color: '#b0b8c9',
+                                font: {
+                                    size: 14
+                                },
+                                padding: 15
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function (context) {
+                                    let label = context.label || '';
+                                    if (label) {
+                                        label += ': ';
+                                    }
+                                    label += context.parsed + '%';
+                                    return label;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            // 時間帯別積上げ棒グラフ
+            // 24時間分のラベルを作成（6:00～翌5:00）
+            const hourlyLabels = [];
+            for (let i = 0; i < 24; i++) {
+                const hour = (6 + i) % 24;
+                hourlyLabels.push(`${hour.toString().padStart(2, '0')}:00`);
+            }
+
+            const hourlyStatusCtx = document.getElementById('hourlyStatusChart').getContext('2d');
+            hourlyStatusChart = new Chart(hourlyStatusCtx, {
+                type: 'bar',
+                data: {
+                    labels: hourlyLabels,
+                    datasets: [
+                        {
+                            label: '稼働中',
+                            data: Array(24).fill(0),
+                            backgroundColor: 'rgba(0, 255, 136, 0.7)',
+                            borderColor: '#00ff88',
+                            borderWidth: 1
+                        },
+                        {
+                            label: 'STOP(黄)',
+                            data: Array(24).fill(0),
+                            backgroundColor: 'rgba(255, 214, 10, 0.7)',
+                            borderColor: '#ffd60a',
+                            borderWidth: 1
+                        },
+                        {
+                            label: 'STOP(赤)',
+                            data: Array(24).fill(0),
+                            backgroundColor: 'rgba(255, 0, 84, 0.7)',
+                            borderColor: '#ff0054',
+                            borderWidth: 1
+                        },
+                        {
+                            label: '休止中',
+                            data: Array(24).fill(0),
+                            backgroundColor: 'rgba(108, 117, 125, 0.5)',
+                            borderColor: '#6c757d',
+                            borderWidth: 1
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            labels: {
+                                color: '#b0b8c9'
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function (context) {
+                                    let label = context.dataset.label || '';
+                                    if (label) {
+                                        label += ': ';
+                                    }
+                                    label += context.parsed.y + '%';
+                                    return label;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            stacked: true,
+                            grid: {
+                                color: 'rgba(0, 217, 255, 0.1)'
+                            },
+                            ticks: {
+                                color: '#b0b8c9'
+                            }
+                        },
+                        y: {
+                            stacked: true,
+                            beginAtZero: true,
+                            max: 100,
+                            grid: {
+                                color: 'rgba(0, 217, 255, 0.1)'
+                            },
+                            ticks: {
+                                color: '#b0b8c9',
+                                callback: function (value) {
+                                    return value + '%';
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            // 日次稼働率折れ線グラフ
+            const dailyOperationCtx = document.getElementById('dailyOperationChart').getContext('2d');
+            dailyOperationChart = new Chart(dailyOperationCtx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: '全体稼働率 (%)',
+                        data: [],
+                        borderColor: '#00d9ff',
+                        backgroundColor: 'rgba(0, 217, 255, 0.1)',
+                        tension: 0.4,
+                        borderWidth: 3,
+                        pointBackgroundColor: '#00d9ff',
+                        pointBorderColor: '#00d9ff',
+                        pointRadius: 5,
+                        pointHoverRadius: 7,
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            labels: {
+                                color: '#b0b8c9',
+                                font: {
+                                    size: 14
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: {
+                                color: 'rgba(0, 217, 255, 0.1)'
+                            },
+                            ticks: {
+                                color: '#b0b8c9'
+                            }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            max: 100,
+                            grid: {
+                                color: 'rgba(0, 217, 255, 0.1)'
+                            },
+                            ticks: {
+                                color: '#b0b8c9',
+                                callback: function (value) {
+                                    return value + '%';
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            // 日次GreenApple収穫量棒グラフ
+            const dailyGreenAppleCtx = document.getElementById('dailyGreenAppleChart').getContext('2d');
+            dailyGreenAppleChart = new Chart(dailyGreenAppleCtx, {
+                type: 'bar',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'GREEN APPLE収穫量 (個)',
+                        data: [],
+                        backgroundColor: 'rgba(0, 255, 136, 0.7)',
+                        borderColor: '#00ff88',
+                        borderWidth: 2,
+                        borderRadius: 8,
+                        hoverBackgroundColor: 'rgba(0, 255, 136, 0.9)'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            labels: {
+                                color: '#b0b8c9',
+                                font: {
+                                    size: 14
+                                }
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function (context) {
+                                    return '🍏 ' + context.parsed.y + '個';
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: {
+                                color: 'rgba(0, 217, 255, 0.1)'
+                            },
+                            ticks: {
+                                color: '#b0b8c9'
+                            }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            grid: {
+                                color: 'rgba(0, 217, 255, 0.1)'
+                            },
+                            ticks: {
+                                color: '#b0b8c9',
+                                stepSize: 1,
+                                callback: function (value) {
+                                    return value + '個';
+                                }
+                            }
+                        }
+                    },
+                    onClick: (event, elements) => {
+                        if (elements.length > 0) {
+                            const index = elements[0].index;
+                            const clickedData = dailyGreenAppleChart.data.datasets[0].data;
+                            const fullDate = dailyGreenAppleChartData[index]; // 完全な日付を保持
+                            showHourlyGreenApples(fullDate);
+                        }
+                    }
+                }
+            });
+        }
+
+        // 日別GreenAppleデータの完全日付を保持するグローバル変数
+        let dailyGreenAppleChartData = [];
+
+        // 時間帯別GreenApple収穫量を表示
+        async function showHourlyGreenApples(dateStr) {
+            const modal = new bootstrap.Modal(document.getElementById('hourlyGreenAppleModal'));
+            document.getElementById('hourlyGreenAppleTitle').textContent = `時間帯別GREEN APPLE収穫量 - ${dateStr}`;
+            modal.show();
+
+            const container = document.getElementById('hourlyGreenAppleContainer');
+            container.innerHTML = '<div class="text-center"><div class="spinner-border text-cyan" role="status"></div></div>';
+
+            try {
+                const response = await fetch(`/api/overall/hourly-green-apples?date=${dateStr}`);
+                const data = await response.json();
+
+                // コンテナをクリア
+                container.innerHTML = '';
+
+                // 各時間帯のデータを表示
+                data.data.forEach(hourData => {
+                    const item = document.createElement('div');
+                    item.className = 'hourly-apple-item';
+                    if (hourData.apples > 0) {
+                        item.classList.add('has-apples');
+                    }
+
+                    // 時間帯ヘッダー
+                    const timeDiv = document.createElement('div');
+                    timeDiv.className = 'hourly-apple-time';
+                    timeDiv.innerHTML = `<i class="bi bi-clock"></i> ${hourData.hour}`;
+
+                    // 稼働率
+                    const rateDiv = document.createElement('div');
+                    rateDiv.className = 'hourly-apple-rate';
+                    rateDiv.textContent = `稼働率: ${hourData.running_percent}%`;
+
+                    // リンゴ表示
+                    const appleDisplay = document.createElement('div');
+                    appleDisplay.className = 'hourly-apple-display';
+
+                    if (hourData.apples === 0) {
+                        const noApples = document.createElement('span');
+                        noApples.className = 'no-apples-text';
+                        noApples.textContent = '収穫なし';
+                        appleDisplay.appendChild(noApples);
+                    } else {
+                        for (let i = 0; i < hourData.apples; i++) {
+                            const apple = document.createElement('span');
+                            apple.className = 'hourly-apple-icon';
+                            apple.textContent = '🍏';
+                            apple.title = `GREEN APPLE ${i + 1}個目`;
+                            appleDisplay.appendChild(apple);
+                        }
+                    }
+
+                    item.appendChild(timeDiv);
+                    item.appendChild(rateDiv);
+                    item.appendChild(appleDisplay);
+                    container.appendChild(item);
+                });
+            } catch (error) {
+                console.error('時間帯別GREEN APPLE取得エラー:', error);
+                container.innerHTML = '<div class="text-center text-danger">データの取得に失敗しました</div>';
+            }
+        }
+
+        // GreenApple表示を更新
+        function updateGreenAppleDisplay(count) {
+            const display = document.getElementById('GreenAppleDisplay');
+            if (!display) return;
+
+            // リンゴアイコンを生成
+            display.innerHTML = '';
+
+            if (count === 0) {
+                display.innerHTML = '<span style="color: var(--text-muted); font-size: 0.8rem;">0個</span>';
+            } else {
+                for (let i = 0; i < count; i++) {
+                    const apple = document.createElement('span');
+                    apple.className = 'green-apple';
+                    apple.textContent = '🍏';
+                    apple.title = `GREEN APPLE ${i + 1}個目`;
+                    display.appendChild(apple);
+                }
+            }
+        }
+
+        // 全体稼働率グラフを更新
+        async function updateOverallCharts() {
+            try {
+                // 現在の全体ステータス（円グラフ）
+                const statusResponse = await fetch('/api/overall/current-status');
+
+                if (!statusResponse.ok) {
+                    throw new Error(`HTTPエラー: ${statusResponse.status}`);
+                }
+
+                const statusData = await statusResponse.json();
+
+                if (overallStatusChart) {
+                    overallStatusChart.data.datasets[0].data = [
+                        statusData.running,
+                        statusData.stop_yellow,
+                        statusData.stop_red,
+                        statusData.idle
+                    ];
+                    overallStatusChart.update();
+                }
+
+                // 時間帯別稼働推移用の日付を決定（6:00より前なら前日）
+                const now = new Date();
+                const currentHour = now.getHours();
+                const targetDate = new Date(now);
+                if (currentHour < 6) {
+                    targetDate.setDate(targetDate.getDate() - 1);
+                }
+                const dateStr = formatDateLocal(targetDate);
+
+                // 時間帯別稼働推移（積上げ棒グラフ）
+                const hourlyResponse = await fetch(`/api/overall/hourly-status?date=${dateStr}`);
+
+                if (!hourlyResponse.ok) {
+                    throw new Error(`HTTPエラー: ${hourlyResponse.status}`);
+                }
+
+                const hourlyData = await hourlyResponse.json();
+
+                if (hourlyStatusChart && hourlyData.data) {
+                    // 24時間分のラベルを作成（6:00～翌5:00）
+                    const allHours = [];
+                    for (let i = 0; i < 24; i++) {
+                        const hour = (6 + i) % 24;
+                        allHours.push(`${hour.toString().padStart(2, '0')}:00`);
+                    }
+
+                    // APIデータを時間帯ごとにマッピング
+                    const dataMap = {};
+                    hourlyData.data.forEach(d => {
+                        dataMap[d.hour] = d;
+                    });
+
+                    // 24時間分のデータを準備（データがない時間は0）
+                    const runningData = allHours.map(h => dataMap[h]?.running || 0);
+                    const stopYellowData = allHours.map(h => dataMap[h]?.stop_yellow || 0);
+                    const stopRedData = allHours.map(h => dataMap[h]?.stop_red || 0);
+                    const idleData = allHours.map(h => dataMap[h]?.idle || 0);
+
+                    hourlyStatusChart.data.labels = allHours;
+                    hourlyStatusChart.data.datasets[0].data = runningData;
+                    hourlyStatusChart.data.datasets[1].data = stopYellowData;
+                    hourlyStatusChart.data.datasets[2].data = stopRedData;
+                    hourlyStatusChart.data.datasets[3].data = idleData;
+                    hourlyStatusChart.update();
+
+                    // GreenApple獲得数を更新
+                    updateGreenAppleDisplay(hourlyData.total_green_apples || 0);
+                }
+
+                // 月次グラフを更新（別関数で処理）
+                updateMonthlyCharts();
+
+                // エラー通知をクリア（成功時）
+                clearErrorNotification();
+            } catch (error) {
+                console.error('全体稼働率グラフの更新エラー:', error);
+                showErrorNotification('データの更新に失敗しました。ネットワーク接続を確認してください。');
+            }
+        }
+
+        // エラー通知を表示
+        function showErrorNotification(message) {
+            // 既存の通知がある場合は削除
+            clearErrorNotification();
+
+            const notification = document.createElement('div');
+            notification.id = 'error-notification';
+            notification.style.cssText = `
+                position: fixed;
+                top: 80px;
+                right: 20px;
+                background-color: rgba(220, 53, 69, 0.95);
+                color: white;
+                padding: 15px 20px;
+                border-radius: 8px;
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+                z-index: 9999;
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                max-width: 400px;
+            `;
+
+            notification.innerHTML = `
+                <i class="bi bi-exclamation-triangle-fill" style="font-size: 1.2rem;"></i>
+                <span>${message}</span>
+                <button onclick="location.reload()" style="
+                    background: white;
+                    color: #dc3545;
+                    border: none;
+                    padding: 5px 10px;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    font-weight: bold;
+                    margin-left: 10px;
+                ">再読み込み</button>
+                <button onclick="clearErrorNotification()" style="
+                    background: transparent;
+                    color: white;
+                    border: none;
+                    font-size: 1.5rem;
+                    cursor: pointer;
+                    padding: 0;
+                    margin-left: 5px;
+                ">×</button>
+            `;
+
+            document.body.appendChild(notification);
+        }
+
+        // エラー通知をクリア
+        function clearErrorNotification() {
+            const notification = document.getElementById('error-notification');
+            if (notification) {
+                notification.remove();
+            }
+        }
+
+        // 月次グラフを更新（稼働率推移とGreenApple収穫量）
+        async function updateMonthlyCharts() {
+            try {
+                // 稼働率推移グラフの日付範囲を取得
+                const operationStartDate = document.getElementById('operationStartDate').value;
+                const operationEndDate = document.getElementById('operationEndDate').value;
+
+                // GreenApple収穫量グラフの日付範囲を取得
+                const appleStartDate = document.getElementById('appleStartDate').value;
+                const appleEndDate = document.getElementById('appleEndDate').value;
+
+                // 稼働率推移（折れ線グラフ）
+                if (operationStartDate && operationEndDate) {
+                    const dailyResponse = await fetch(`/api/overall/daily-operation-rate?start_date=${operationStartDate}&end_date=${operationEndDate}`);
+                    const dailyData = await dailyResponse.json();
+
+                    if (dailyOperationChart && dailyData.data) {
+                        dailyOperationChart.data.labels = dailyData.data.map(d => d.date);
+                        dailyOperationChart.data.datasets[0].data = dailyData.data.map(d => d.rate);
+                        dailyOperationChart.update();
+                    }
+                }
+
+                // GreenApple収穫量（棒グラフ）
+                if (appleStartDate && appleEndDate) {
+                    const dailyApplesResponse = await fetch(`/api/overall/daily-green-apples?start_date=${appleStartDate}&end_date=${appleEndDate}`);
+                    const dailyApplesData = await dailyApplesResponse.json();
+
+                    if (dailyGreenAppleChart && dailyApplesData.data) {
+                        // グラフデータを更新
+                        dailyGreenAppleChart.data.labels = dailyApplesData.data.map(d => d.date);
+                        dailyGreenAppleChart.data.datasets[0].data = dailyApplesData.data.map(d => d.apples);
+                        dailyGreenAppleChart.update();
+
+                        // 完全な日付データを保存（クリック時に使用）
+                        dailyGreenAppleChartData = dailyApplesData.data.map(d => d.full_date);
+                    }
+                }
+            } catch (error) {
+                console.error('月次グラフの更新エラー:', error);
+            }
+        }
+
+        // 日付をYYYY-MM-DD形式にフォーマット（ローカルタイム）
+        function formatDateLocal(date) {
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        }
+
+        // 日付入力フィールドを初期化
+        function initializeDateSelectors() {
+            const now = new Date();
+            const currentYear = now.getFullYear();
+            const currentMonth = now.getMonth();
+
+            // 今月の1日を取得
+            const firstDay = new Date(currentYear, currentMonth, 1);
+            const firstDayStr = formatDateLocal(firstDay);
+
+            // 今月の末日を取得（翌月の0日 = 今月の末日）
+            const lastDay = new Date(currentYear, currentMonth + 1, 0);
+            const lastDayStr = formatDateLocal(lastDay);
+
+            // 稼働率推移の日付範囲を設定（今月の1日～末日）
+            document.getElementById('operationStartDate').value = firstDayStr;
+            document.getElementById('operationEndDate').value = lastDayStr;
+
+            // GreenApple収穫量の日付範囲を設定（今月の1日～末日）
+            document.getElementById('appleStartDate').value = firstDayStr;
+            document.getElementById('appleEndDate').value = lastDayStr;
+        }
+
+        // 起動時の処理
+        window.addEventListener('load', () => {
+            loadColumnSetting();  // 列数設定を読み込み
+            initializeDateSelectors();  // 年月セレクトボックスを初期化
+            connectWebSocket();
+            initCharts();
+            updateOverallCharts();  // 全体稼働率グラフを初期化
+
+            // 全体稼働率グラフを1分ごとに更新
+            setInterval(updateOverallCharts, 60000);
+        });
+
+        // ========== タイムライン機能 ==========
+
+        // デバイスタイムラインを読み込み
+        async function loadDeviceTimeline(deviceAddr) {
+            try {
+                // タイムライン用の日付を決定（6:00より前なら前日）
+                const now = new Date();
+                const currentHour = now.getHours();
+                const targetDate = new Date(now);
+                if (currentHour < 6) {
+                    targetDate.setDate(targetDate.getDate() - 1);
+                }
+                const dateStr = formatDateLocal(targetDate);
+
+                const response = await fetch(`/api/devices/${deviceAddr}/timeline?date=${dateStr}`);
+                if (!response.ok) {
+                    console.error(`タイムライン取得エラー: ${deviceAddr}`);
+                    return;
+                }
+
+                const data = await response.json();
+
+                // 日勤タイムラインを描画
+                const dayBarId = `timeline-day-${deviceAddr}`;
+                renderTimeline(dayBarId, data.day_shift.segments);
+
+                // 夜勤タイムラインを描画
+                const nightBarId = `timeline-night-${deviceAddr}`;
+                renderTimeline(nightBarId, data.night_shift.segments);
+
+            } catch (error) {
+                console.error('タイムライン読み込みエラー:', error);
+            }
+        }
+
+        // タイムラインバーを描画
+        function renderTimeline(elementId, segments) {
+            const barElement = document.getElementById(elementId);
+            if (!barElement) return;
+
+            barElement.innerHTML = '';
+
+            // 総時間を計算
+            const totalMinutes = segments.reduce((sum, seg) => sum + seg.duration_minutes, 0);
+
+            segments.forEach(segment => {
+                const segmentDiv = document.createElement('div');
+                segmentDiv.className = `timeline-segment ${segment.color}`;
+
+                // 幅を割合で設定
+                const widthPercent = (segment.duration_minutes / totalMinutes) * 100;
+                segmentDiv.style.flex = `0 0 ${widthPercent}%`;
+
+                // ツールチップ（タイトル属性）
+                const statusText = {
+                    'running': '稼働',
+                    'stop_yellow': '停止(黄)',
+                    'stop_red': '停止(赤)',
+                    'none': '未稼働',
+                    'future': '未来'
+                }[segment.status] || segment.status;
+
+                const startTime = new Date(segment.start).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+                const endTime = new Date(segment.end).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+
+                segmentDiv.title = `${statusText}: ${startTime} - ${endTime} (${segment.duration_minutes}分)`;
+
+                barElement.appendChild(segmentDiv);
+            });
+        }
+
+        // ========== デバイス管理機能 ==========
+
+        // デバイス管理モーダルを表示
+        function showDeviceManagement() {
+            const modal = new bootstrap.Modal(document.getElementById('deviceManagementModal'));
+            modal.show();
+            loadDeviceManageList();
+        }
+
+        // デバイス管理一覧を読み込み
+        async function loadDeviceManageList() {
+            try {
+                const response = await fetch('/api/devices/config');
+                const devices = await response.json();
+
+                const tbody = document.getElementById('deviceManagementList');
+                tbody.innerHTML = '';
+
+                if (devices.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" class="text-center">登録されているデバイスがありません</td></tr>';
+                    return;
+                }
+
+                devices.forEach(device => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td><code>${device.device_addr}</code></td>
+                        <td>${device.name}</td>
+                        <td>${device.location}</td>
+                        <td>${device.description}</td>
+                        <td>${device.index}</td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-primary" onclick="editDevice('${device.device_addr}')">
+                                編集
+                            </button>
+                            <button class="btn btn-sm btn-outline-danger" onclick="deleteDevice('${device.device_addr}', '${device.name}')">
+                                削除
+                            </button>
+                        </td>
+                    `;
+                    tbody.appendChild(row);
+                });
+            } catch (error) {
+                console.error('デバイス一覧取得エラー:', error);
+                alert('デバイス一覧の取得に失敗しました');
+            }
+        }
+
+        // デバイス追加フォームを表示
+        function showAddDeviceForm() {
+            document.getElementById('deviceFormTitle').textContent = 'デバイス追加';
+            document.getElementById('deviceFormMode').value = 'add';
+            document.getElementById('deviceFormOriginalAddr').value = '';
+
+            // フォームをリセット
+            document.getElementById('deviceAddr').value = '';
+            document.getElementById('deviceAddr').disabled = false;
+            document.getElementById('deviceName').value = '';
+            document.getElementById('deviceLocation').value = '';
+            document.getElementById('deviceDescription').value = '';
+            document.getElementById('deviceIndex').value = '999';
+
+            const modal = new bootstrap.Modal(document.getElementById('deviceFormModal'));
+            modal.show();
+        }
+
+        // デバイス編集フォームを表示
+        async function editDevice(deviceAddr) {
+            try {
+                const response = await fetch('/api/devices/config');
+                const devices = await response.json();
+                const device = devices.find(d => d.device_addr === deviceAddr);
+
+                if (!device) {
+                    alert('デバイスが見つかりません');
+                    return;
+                }
+
+                document.getElementById('deviceFormTitle').textContent = 'デバイス編集';
+                document.getElementById('deviceFormMode').value = 'edit';
+                document.getElementById('deviceFormOriginalAddr').value = deviceAddr;
+
+                document.getElementById('deviceAddr').value = device.device_addr;
+                document.getElementById('deviceAddr').disabled = true; // 編集時はMACアドレス変更不可
+                document.getElementById('deviceName').value = device.name;
+                document.getElementById('deviceLocation').value = device.location;
+                document.getElementById('deviceDescription').value = device.description;
+                document.getElementById('deviceIndex').value = device.index;
+
+                const modal = new bootstrap.Modal(document.getElementById('deviceFormModal'));
+                modal.show();
+            } catch (error) {
+                console.error('デバイス情報取得エラー:', error);
+                alert('デバイス情報の取得に失敗しました');
+            }
+        }
+
+        // デバイスを保存（追加/編集共通）
+        async function saveDevice() {
+            const mode = document.getElementById('deviceFormMode').value;
+            const deviceAddr = document.getElementById('deviceAddr').value.trim().toUpperCase();
+            const name = document.getElementById('deviceName').value.trim();
+            const location = document.getElementById('deviceLocation').value.trim();
+            const description = document.getElementById('deviceDescription').value.trim();
+            const index = parseInt(document.getElementById('deviceIndex').value);
+
+            if (!deviceAddr || !name) {
+                alert('MACアドレスと設備名は必須です');
+                return;
+            }
+
+            // MACアドレス形式チェック
+            if (!/^[0-9A-F]{12}$/i.test(deviceAddr)) {
+                alert('MACアドレスは12桁の16進数で入力してください（例: ECDA3BBE61E8）');
+                return;
+            }
+
+            try {
+                let response;
+                if (mode === 'add') {
+                    // 新規追加
+                    response = await fetch('/api/devices/register', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded',
+                        },
+                        body: new URLSearchParams({
+                            device_addr: deviceAddr,
+                            name: name,
+                            location: location,
+                            description: description,
+                            index: index
+                        })
+                    });
+                } else {
+                    // 編集
+                    const originalAddr = document.getElementById('deviceFormOriginalAddr').value;
+                    response = await fetch(`/api/devices/${originalAddr}?name=${encodeURIComponent(name)}&location=${encodeURIComponent(location)}&description=${encodeURIComponent(description)}&index=${index}`, {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        }
+                    });
+                }
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    alert(result.message);
+
+                    // モーダルを閉じる
+                    const formModal = bootstrap.Modal.getInstance(document.getElementById('deviceFormModal'));
+                    formModal.hide();
+
+                    // デバイス一覧を再読み込み
+                    loadDeviceManageList();
+
+                    // メイン画面のデバイス一覧も再読み込み
+                    fetchDevices();
+                } else {
+                    alert(`エラー: ${result.detail}`);
+                }
+            } catch (error) {
+                console.error('デバイス保存エラー:', error);
+                alert('デバイスの保存に失敗しました');
+            }
+        }
+
+        // デバイスを削除
+        async function deleteDevice(deviceAddr, deviceName) {
+            if (!confirm(`デバイス「${deviceName}」を削除してもよろしいですか？\nMACアドレス: ${deviceAddr}`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/devices/${deviceAddr}`, {
+                    method: 'DELETE'
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    alert(result.message);
+
+                    // デバイス一覧を再読み込み
+                    loadDeviceManageList();
+
+                    // メイン画面のデバイス一覧も再読み込み
+                    fetchDevices();
+                } else {
+                    alert(`エラー: ${result.detail}`);
+                }
+            } catch (error) {
+                console.error('デバイス削除エラー:', error);
+                alert('デバイスの削除に失敗しました');
+            }
+        }
+
+        // ========== 稼働率表示機能 ==========
+
+        let operationRateChart = null;
+
+        // 稼働率モーダルを表示
+        function showOperationRate(deviceAddr, deviceName) {
+            document.getElementById('operationRateTitle').textContent = `稼働率表示 - ${deviceName}`;
+            document.getElementById('operationRateDeviceAddr').value = deviceAddr;
+
+            // デフォルト期間: 過去7日間
+            const today = new Date();
+            const sevenDaysAgo = new Date(today);
+            sevenDaysAgo.setDate(today.getDate() - 7);
+
+            document.getElementById('modalOperationStartDate').value = formatDateLocal(sevenDaysAgo);
+            document.getElementById('modalOperationEndDate').value = formatDateLocal(today);
+
+            // 結果エリアを非表示
+            document.getElementById('operationRateResult').style.display = 'none';
+
+            const modal = new bootstrap.Modal(document.getElementById('operationRateModal'));
+            modal.show();
+        }
+
+        // 稼働率を計算
+        async function calculateOperationRate() {
+            const deviceAddr = document.getElementById('operationRateDeviceAddr').value;
+            const startDate = document.getElementById('modalOperationStartDate').value;
+            const endDate = document.getElementById('modalOperationEndDate').value;
+
+            if (!startDate || !endDate) {
+                alert('開始日と終了日を指定してください');
+                return;
+            }
+
+            if (startDate > endDate) {
+                alert('開始日は終了日より前である必要があります');
+                return;
+            }
+
+            try {
+                const response = await fetch(
+                    `/api/devices/${deviceAddr}/operation-rate?start_date=${startDate}&end_date=${endDate}`
+                );
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    alert(`エラー: ${error.detail}`);
+                    return;
+                }
+
+                const data = await response.json();
+
+                // 結果を表示
+                document.getElementById('operationRateValue').textContent = `${data.operation_rate}%`;
+
+                // テーブルを更新
+                const total = data.total_minutes;
+                const tableBody = document.getElementById('operationRateTable');
+                tableBody.innerHTML = `
+                    <tr>
+                        <td><span class="badge bg-success">稼働（緑）</span></td>
+                        <td>${data.operation_minutes.toLocaleString()} 分</td>
+                        <td>${((data.operation_minutes / total) * 100).toFixed(1)}%</td>
+                    </tr>
+                    <tr>
+                        <td><span class="badge bg-warning">停止（黄）</span></td>
+                        <td>${data.stop_yellow_minutes.toLocaleString()} 分</td>
+                        <td>${((data.stop_yellow_minutes / total) * 100).toFixed(1)}%</td>
+                    </tr>
+                    <tr>
+                        <td><span class="badge bg-danger">停止（赤）</span></td>
+                        <td>${data.stop_red_minutes.toLocaleString()} 分</td>
+                        <td>${((data.stop_red_minutes / total) * 100).toFixed(1)}%</td>
+                    </tr>
+                    <tr>
+                        <td><span class="badge bg-secondary">未稼働</span></td>
+                        <td>${data.none_minutes.toLocaleString()} 分</td>
+                        <td>${((data.none_minutes / total) * 100).toFixed(1)}%</td>
+                    </tr>
+                    <tr class="fw-bold">
+                        <td>合計</td>
+                        <td>${total.toLocaleString()} 分</td>
+                        <td>100.0%</td>
+                    </tr>
+                `;
+
+                // 円グラフを描画
+                renderOperationRatePieChart(data);
+
+                // 結果エリアを表示
+                document.getElementById('operationRateResult').style.display = 'block';
+
+            } catch (error) {
+                console.error('稼働率計算エラー:', error);
+                alert('稼働率の計算に失敗しました');
+            }
+        }
+
+        // 円グラフを描画
+        function renderOperationRatePieChart(data) {
+            const ctx = document.getElementById('operationRatePieChart').getContext('2d');
+
+            // 既存のチャートを破棄
+            if (operationRateChart) {
+                operationRateChart.destroy();
+            }
+
+            operationRateChart = new Chart(ctx, {
+                type: 'pie',
+                data: {
+                    labels: ['稼働（緑）', '停止（黄）', '停止（赤）', '未稼働'],
+                    datasets: [{
+                        data: [
+                            data.operation_minutes,
+                            data.stop_yellow_minutes,
+                            data.stop_red_minutes,
+                            data.none_minutes
+                        ],
+                        backgroundColor: [
+                            'rgba(40, 167, 69, 0.8)',
+                            'rgba(255, 193, 7, 0.8)',
+                            'rgba(220, 53, 69, 0.8)',
+                            'rgba(108, 117, 125, 0.8)'
+                        ],
+                        borderColor: [
+                            '#28a745',
+                            '#ffc107',
+                            '#dc3545',
+                            '#6c757d'
+                        ],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom'
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function (context) {
+                                    const label = context.label || '';
+                                    const value = context.parsed || 0;
+                                    const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                    const percentage = ((value / total) * 100).toFixed(1);
+                                    return `${label}: ${value.toLocaleString()}分 (${percentage}%)`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // ========== 現在の稼働率読み込み ==========
+
+        // 現在の稼働率を読み込む（6:00から現在まで）
+        async function loadCurrentOperationRate(deviceAddr) {
+            try {
+                const response = await fetch(`/api/devices/${deviceAddr}/current-operation-rate`);
+                const data = await response.json();
+
+                if (response.ok) {
+                    const rateValueElem = document.getElementById(`rate-value-${deviceAddr}`);
+                    const rateDetailElem = document.getElementById(`rate-detail-${deviceAddr}`);
+
+                    if (rateValueElem && rateDetailElem) {
+                        rateValueElem.textContent = `${data.operation_rate}%`;
+
+                        // 稼働率に応じた色分け
+                        rateValueElem.className = 'me-2';
+                        if (data.operation_rate >= 80) {
+                            rateValueElem.classList.add('text-success');
+                        } else if (data.operation_rate >= 50) {
+                            rateValueElem.classList.add('text-warning');
+                        } else {
+                            rateValueElem.classList.add('text-danger');
+                        }
+
+                        // 詳細情報
+                        const hours = Math.floor(data.operation_minutes / 60);
+                        const mins = data.operation_minutes % 60;
+                        const totalHours = Math.floor(data.total_minutes / 60);
+                        const totalMins = data.total_minutes % 60;
+                        rateDetailElem.textContent = `稼働: ${hours}h ${mins}m / ${totalHours}h ${totalMins}m`;
+                    }
+                } else {
+                    console.error('稼働率の取得に失敗:', data);
+                    const rateDetailElem = document.getElementById(`rate-detail-${deviceAddr}`);
+                    if (rateDetailElem) {
+                        rateDetailElem.textContent = 'データなし';
+                    }
+                }
+            } catch (error) {
+                console.error('稼働率読み込みエラー:', error);
+                const rateDetailElem = document.getElementById(`rate-detail-${deviceAddr}`);
+                if (rateDetailElem) {
+                    rateDetailElem.textContent = '取得失敗';
+                }
+            }
+        }
+
+        // ========== データ受信ログ機能 ==========
+
+        let currentLogDeviceAddr = '';
+
+        // データ受信ログモーダルを表示
+        function showDataLogs(deviceAddr, deviceName) {
+            currentLogDeviceAddr = deviceAddr;
+            document.getElementById('dataLogsTitle').textContent = `データ受信ログ - ${deviceName}`;
+
+            const modal = new bootstrap.Modal(document.getElementById('dataLogsModal'));
+            modal.show();
+
+            // ログを読み込み
+            loadDataLogs(deviceAddr);
+        }
+
+        // データ受信ログを読み込む
+        async function loadDataLogs(deviceAddr) {
+            try {
+                const tableBody = document.getElementById('dataLogsTableBody');
+                tableBody.innerHTML = `
+                    <tr>
+                        <td colspan="2" class="text-center">
+                            <div class="spinner-border spinner-border-sm text-cyan" role="status">
+                                <span class="visually-hidden">読み込み中...</span>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+
+                const response = await fetch(`/api/devices/${deviceAddr}/data-logs?limit=100`);
+                const data = await response.json();
+
+                if (response.ok) {
+                    document.getElementById('logCount').textContent = data.total_logs;
+
+                    if (data.logs.length === 0) {
+                        tableBody.innerHTML = `
+                            <tr>
+                                <td colspan="2" class="text-center text-muted">
+                                    データがありません
+                                </td>
+                            </tr>
+                        `;
+                        return;
+                    }
+
+                    // ログをテーブルに表示
+                    tableBody.innerHTML = '';
+                    data.logs.forEach(log => {
+                        const row = document.createElement('tr');
+
+                        // ステータスに応じたバッジカラー
+                        let statusClass = 'status-idle';
+                        if (log.green) statusClass = 'status-running';
+                        else if (log.yellow) statusClass = 'status-warning';
+                        else if (log.red) statusClass = 'status-stop';
+
+                        row.innerHTML = `
+                            <td>${log.timestamp}</td>
+                            <td><span class="device-status-badge ${statusClass}">${log.status_text}</span></td>
+                        `;
+                        tableBody.appendChild(row);
+                    });
+                } else {
+                    tableBody.innerHTML = `
+                        <tr>
+                            <td colspan="2" class="text-center text-danger">
+                                データの取得に失敗しました
+                            </td>
+                        </tr>
+                    `;
+                }
+            } catch (error) {
+                console.error('データ受信ログ読み込みエラー:', error);
+                const tableBody = document.getElementById('dataLogsTableBody');
+                tableBody.innerHTML = `
+                    <tr>
+                        <td colspan="2" class="text-center text-danger">
+                            エラーが発生しました
+                        </td>
+                    </tr>
+                `;
+            }
+        }
+
+        // データ受信ログを更新
+        function refreshDataLogs() {
+            if (currentLogDeviceAddr) {
+                loadDataLogs(currentLogDeviceAddr);
+            }
+        }
+    </script>
+</body>
+
+</html>
