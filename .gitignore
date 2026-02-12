@@ -34,6 +34,9 @@ wheels/
 *.sqlite3
 lighttower.db
 
+# アーカイブ
+archive/
+
 # IDE
 .vscode/
 .idea/
