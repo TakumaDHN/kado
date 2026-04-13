@@ -13,12 +13,13 @@ import json
 import asyncio
 import re
 import pytz
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time as dtime, date as ddate
+import calendar
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from .database import engine, get_db, Base
-from .models import DeviceStatus, DeviceHistory, DeviceRegistration
+from .models import DeviceStatus, DeviceHistory, DeviceRegistration, DailyOperationRate, DailyGreenAppleCount
 from .mqtt_client import MQTTClient
 from .device_config import REGISTERED_DEVICES, get_device_name, get_device_info, get_all_devices_from_db, get_device_info_from_db
 from .utils import validate_mac_address, get_status_from_lights
@@ -182,6 +183,260 @@ async def reset_all_devices_to_idle():
             db.close()
 
 
+def _calc_green_minutes(db, device_addr: str, window_start_utc: datetime, window_end_utc: datetime) -> float:
+    """指定時間ウィンドウ内のgreen=True（稼働中）の合計分数を計算"""
+    histories = db.query(DeviceHistory).filter(
+        DeviceHistory.device_addr == device_addr,
+        DeviceHistory.timestamp >= window_start_utc,
+        DeviceHistory.timestamp < window_end_utc
+    ).order_by(DeviceHistory.timestamp).all()
+
+    # ウィンドウ開始時点の状態を決定（直前のレコードから）
+    prev = db.query(DeviceHistory).filter(
+        DeviceHistory.device_addr == device_addr,
+        DeviceHistory.timestamp < window_start_utc
+    ).order_by(DeviceHistory.timestamp.desc()).first()
+
+    records = []
+    # ウィンドウ開始時点のレコードを追加
+    if prev:
+        records.append({'timestamp': window_start_utc, 'green': prev.green})
+    elif histories:
+        records.append({'timestamp': window_start_utc, 'green': False})
+
+    for h in histories:
+        records.append({'timestamp': h.timestamp, 'green': h.green})
+
+    if not records:
+        return 0.0
+
+    green_minutes = 0.0
+    for i, rec in enumerate(records):
+        if i < len(records) - 1:
+            next_ts = records[i + 1]['timestamp']
+        else:
+            next_ts = window_end_utc
+        duration = max(0, (next_ts - rec['timestamp']).total_seconds() / 60)
+        if rec['green']:
+            green_minutes += duration
+
+    return green_minutes
+
+
+def _calc_apples_for_day(db, device_addrs: list, day_start_jst, day_end_jst) -> int:
+    """1日分のGREEN APPLE収穫量を計算（全デバイス合算の時間帯別ロジック）"""
+    jst = pytz.timezone('Asia/Tokyo')
+    utc = pytz.UTC
+    now_jst = datetime.now(jst)
+    daily_apples = 0
+    current_hour = day_start_jst
+
+    while current_hour < day_end_jst and current_hour <= now_jst:
+        next_hour = current_hour + timedelta(hours=1)
+
+        total_running_minutes = 0
+        total_stop_yellow_minutes = 0
+        total_stop_red_minutes = 0
+        total_idle_minutes = 0
+
+        hour_start_utc = current_hour.astimezone(utc).replace(tzinfo=None)
+        hour_end_utc = next_hour.astimezone(utc).replace(tzinfo=None)
+
+        for device_addr in device_addrs:
+            histories = db.query(DeviceHistory).filter(
+                DeviceHistory.device_addr == device_addr,
+                DeviceHistory.timestamp >= hour_start_utc,
+                DeviceHistory.timestamp < hour_end_utc
+            ).order_by(DeviceHistory.timestamp).all()
+
+            prev_history = db.query(DeviceHistory).filter(
+                DeviceHistory.device_addr == device_addr,
+                DeviceHistory.timestamp < hour_start_utc
+            ).order_by(DeviceHistory.timestamp.desc()).first()
+
+            period_end = min(hour_end_utc, now_jst.astimezone(utc).replace(tzinfo=None))
+
+            if not histories and not prev_history:
+                duration_minutes = (period_end - hour_start_utc).total_seconds() / 60
+                total_idle_minutes += duration_minutes
+                continue
+
+            if prev_history:
+                start_status = {
+                    'timestamp': hour_start_utc,
+                    'green': prev_history.green,
+                    'yellow': prev_history.yellow,
+                    'red': prev_history.red
+                }
+            elif histories:
+                start_status = {
+                    'timestamp': hour_start_utc,
+                    'green': histories[0].green,
+                    'yellow': histories[0].yellow,
+                    'red': histories[0].red
+                }
+            else:
+                start_status = {
+                    'timestamp': hour_start_utc,
+                    'green': False, 'yellow': False, 'red': False
+                }
+
+            time_records = [start_status]
+            for h in histories:
+                time_records.append({
+                    'timestamp': h.timestamp,
+                    'green': h.green,
+                    'yellow': h.yellow,
+                    'red': h.red
+                })
+
+            for idx in range(len(time_records)):
+                rec = time_records[idx]
+                next_ts = time_records[idx + 1]['timestamp'] if idx < len(time_records) - 1 else period_end
+                duration_minutes = max(0, (next_ts - rec['timestamp']).total_seconds() / 60)
+
+                if rec['green']:
+                    total_running_minutes += duration_minutes
+                elif rec['yellow']:
+                    total_stop_yellow_minutes += duration_minutes
+                elif rec['red']:
+                    total_stop_red_minutes += duration_minutes
+                else:
+                    total_idle_minutes += duration_minutes
+
+        total_minutes = total_running_minutes + total_stop_yellow_minutes + total_stop_red_minutes + total_idle_minutes
+        if total_minutes > 0:
+            running_percent = round(total_running_minutes / total_minutes * 100, 1)
+        else:
+            running_percent = 0
+
+        green_apples = 0
+        if running_percent >= 50:
+            green_apples = 5
+        elif running_percent >= 40:
+            green_apples = 3
+        elif running_percent >= 35:
+            green_apples = 2
+        elif running_percent > 30:
+            green_apples = 1
+
+        daily_apples += green_apples
+        current_hour = next_hour
+
+    return daily_apples
+
+
+async def calculate_daily_aggregates():
+    """
+    毎日6:00 JSTに前日の集計データを計算してDBに保存
+    - 稼働率: 定時内(8:00-翌2:00)と含残業(8:00-翌5:00)
+    - GREEN APPLE: 24時間(6:00-翌6:00)の収穫量
+    """
+    db = None
+    try:
+        db = next(get_db())
+        jst = pytz.timezone('Asia/Tokyo')
+        utc = pytz.UTC
+
+        now_jst = datetime.now(jst)
+        yesterday = (now_jst - timedelta(days=1)).date()
+
+        logger.info(f"=== 日次集計処理開始 ({now_jst.strftime('%Y-%m-%d %H:%M:%S JST')}) 対象日: {yesterday} ===")
+
+        # 時間ウィンドウ（JST）
+        regular_start = jst.localize(datetime.combine(yesterday, dtime(8, 0)))   # 8:00 JST
+        regular_end = regular_start + timedelta(hours=18)                         # 翌2:00 JST
+        overtime_start = regular_start                                             # 8:00 JST
+        overtime_end = overtime_start + timedelta(hours=21)                        # 翌5:00 JST
+        day_start = jst.localize(datetime.combine(yesterday, dtime(6, 0)))        # 6:00 JST
+        day_end = day_start + timedelta(hours=24)                                  # 翌6:00 JST
+
+        # UTCに変換（DBはnaive UTCで保存されている）
+        regular_start_utc = regular_start.astimezone(utc).replace(tzinfo=None)
+        regular_end_utc = regular_end.astimezone(utc).replace(tzinfo=None)
+        overtime_start_utc = overtime_start.astimezone(utc).replace(tzinfo=None)
+        overtime_end_utc = overtime_end.astimezone(utc).replace(tzinfo=None)
+
+        registrations = db.query(DeviceRegistration).filter(
+            DeviceRegistration.is_enabled == True
+        ).all()
+
+        # --- 稼働率の計算・保存 ---
+        for reg in registrations:
+            green_min_regular = _calc_green_minutes(db, reg.device_addr, regular_start_utc, regular_end_utc)
+            green_min_overtime = _calc_green_minutes(db, reg.device_addr, overtime_start_utc, overtime_end_utc)
+
+            existing = db.query(DailyOperationRate).filter(
+                DailyOperationRate.device_addr == reg.device_addr,
+                DailyOperationRate.target_date == yesterday
+            ).first()
+
+            if existing:
+                existing.running_minutes_regular = green_min_regular
+                existing.running_minutes_overtime = green_min_overtime
+            else:
+                db.add(DailyOperationRate(
+                    device_addr=reg.device_addr,
+                    target_date=yesterday,
+                    running_minutes_regular=green_min_regular,
+                    window_minutes_regular=1080.0,
+                    running_minutes_overtime=green_min_overtime,
+                    window_minutes_overtime=1260.0,
+                ))
+
+            rate_r = round(green_min_regular / 1080 * 100, 1) if 1080 > 0 else 0
+            rate_o = round(green_min_overtime / 1260 * 100, 1) if 1260 > 0 else 0
+            logger.info(f"  稼働率 {reg.name} ({reg.device_addr}): 定時内={rate_r}%, 含残業={rate_o}%")
+
+        # --- GREEN APPLE収穫量の計算・保存 ---
+        # 設置場所ごと + 全体
+        location_groups = {}
+        for reg in registrations:
+            loc = reg.location or ""
+            if loc not in location_groups:
+                location_groups[loc] = []
+            location_groups[loc].append(reg.device_addr)
+
+        # 全体
+        all_addrs = [reg.device_addr for reg in registrations]
+        total_apples = _calc_apples_for_day(db, all_addrs, day_start, day_end)
+        _upsert_daily_apple(db, yesterday, "", total_apples)
+        logger.info(f"  GREEN APPLE 全体: {total_apples}個")
+
+        # 設置場所別
+        for loc, addrs in location_groups.items():
+            loc_apples = _calc_apples_for_day(db, addrs, day_start, day_end)
+            _upsert_daily_apple(db, yesterday, loc, loc_apples)
+            logger.info(f"  GREEN APPLE {loc}: {loc_apples}個")
+
+        db.commit()
+        logger.info(f"=== 日次集計処理完了 ===")
+
+    except Exception as e:
+        logger.error(f"日次集計処理エラー: {e}")
+        if db:
+            db.rollback()
+    finally:
+        if db:
+            db.close()
+
+
+def _upsert_daily_apple(db, target_date, location: str, apple_count: int):
+    """DailyGreenAppleCountをupsert"""
+    existing = db.query(DailyGreenAppleCount).filter(
+        DailyGreenAppleCount.target_date == target_date,
+        DailyGreenAppleCount.location == location
+    ).first()
+    if existing:
+        existing.apple_count = apple_count
+    else:
+        db.add(DailyGreenAppleCount(
+            target_date=target_date,
+            location=location,
+            apple_count=apple_count,
+        ))
+
+
 # データベース初期化
 @app.on_event("startup")
 async def startup_event():
@@ -195,11 +450,15 @@ async def startup_event():
     # 登録済みデバイスを初期化
     initialize_devices()
 
-    # MQTTクライアントを開始
+    # MQTTクライアントを開始（ブローカー未起動でも続行）
     loop = asyncio.get_event_loop()
     mqtt_client = MQTTClient(on_message_callback=handle_mqtt_message, event_loop=loop)
-    mqtt_client.start()
-    logger.info("MQTTクライアントを起動しました")
+    try:
+        mqtt_client.start()
+        logger.info("MQTTクライアントを起動しました")
+    except Exception as e:
+        logger.warning(f"MQTTクライアント起動スキップ: {e}")
+        logger.warning("MQTT無しモードで起動します（既存DBデータのみ表示）")
 
     # スケジューラーを起動（毎日6:00 JSTに全デバイスをリセット）
     scheduler = AsyncIOScheduler(timezone=pytz.timezone('Asia/Tokyo'))
@@ -210,8 +469,15 @@ async def startup_event():
         name='毎日6:00にデバイスを休止状態にリセット',
         replace_existing=True
     )
+    scheduler.add_job(
+        calculate_daily_aggregates,
+        CronTrigger(hour=6, minute=0, second=15),  # 毎日6:00:15 JST（リセット直後）
+        id='calculate_daily_aggregates',
+        name='毎日6:00に前日の集計データを計算',
+        replace_existing=True
+    )
     scheduler.start()
-    logger.info("スケジューラーを起動しました - 毎日6:00 JSTに全デバイスを休止状態にリセット")
+    logger.info("スケジューラーを起動しました - 毎日6:00 JSTにリセット+日次集計")
 
 
 def initialize_devices():
@@ -1128,14 +1394,20 @@ async def get_device_data_logs(
 # ========== 全体稼働率API ==========
 
 @app.get("/api/overall/current-status")
-async def get_overall_current_status(db: Session = Depends(get_db)):
+async def get_overall_current_status(
+    location: Optional[str] = Query(default=None, description="絞り込む設置場所（省略時は全体）"),
+    db: Session = Depends(get_db)
+):
     """全デバイスの現在のステータス時間割合を取得（円グラフ用）"""
     jst = pytz.timezone('Asia/Tokyo')
     utc = pytz.UTC
 
-    # 登録されているデバイス一覧を取得
+    # デバイス一覧を取得（設置場所フィルタ対応）
     registrations = db.query(DeviceRegistration).all()
-    device_addrs = [reg.device_addr for reg in registrations]
+    if location:
+        device_addrs = [reg.device_addr for reg in registrations if reg.location == location]
+    else:
+        device_addrs = [reg.device_addr for reg in registrations]
 
     if not device_addrs:
         return {
@@ -1227,6 +1499,7 @@ async def get_overall_current_status(db: Session = Depends(get_db)):
 @app.get("/api/overall/hourly-status")
 async def get_overall_hourly_status(
     date: str = Query(default=None, description="YYYY-MM-DD形式の日付（省略時は今日）"),
+    location: Optional[str] = Query(default=None, description="絞り込む設置場所（省略時は全体）"),
     db: Session = Depends(get_db)
 ):
     """1時間ごとの全体ステータス割合を取得（積上げ棒グラフ用）"""
@@ -1247,9 +1520,12 @@ async def get_overall_hourly_status(
     start_time = jst.localize(datetime.combine(target_date, datetime.min.time()) + timedelta(hours=6))
     end_time = start_time + timedelta(hours=24)
 
-    # 登録されているデバイス一覧を取得
+    # デバイス一覧を取得（設置場所フィルタ対応）
     registrations = db.query(DeviceRegistration).all()
-    device_addrs = [reg.device_addr for reg in registrations]
+    if location:
+        device_addrs = [reg.device_addr for reg in registrations if reg.location == location]
+    else:
+        device_addrs = [reg.device_addr for reg in registrations]
 
     if not device_addrs:
         return {"hours": [], "data": []}
@@ -1408,31 +1684,33 @@ async def get_overall_daily_operation_rate(
     days: int = Query(default=None, description="取得する日数（year/month指定時は無視）"),
     start_date: str = Query(default=None, description="開始日（YYYY-MM-DD形式）"),
     end_date: str = Query(default=None, description="終了日（YYYY-MM-DD形式）"),
+    location: Optional[str] = Query(default=None, description="絞り込む設置場所（省略時は全体）"),
     db: Session = Depends(get_db)
 ):
-    """日ごとの全体稼働率を取得（折れ線グラフ用）"""
+    """日ごとの全体稼働率を取得（定時内/含残業の2系列、集計テーブルから取得）"""
     jst = pytz.timezone('Asia/Tokyo')
     utc = pytz.UTC
 
-    # 登録されているデバイス一覧を取得
-    registrations = db.query(DeviceRegistration).all()
-    device_addrs = [reg.device_addr for reg in registrations]
+    registrations = db.query(DeviceRegistration).filter(
+        DeviceRegistration.is_enabled == True
+    ).all()
+    if location:
+        device_addrs = [reg.device_addr for reg in registrations if reg.location == location]
+    else:
+        device_addrs = [reg.device_addr for reg in registrations]
 
     if not device_addrs:
-        return {"dates": [], "rates": []}
+        return {"total_devices": 0, "data": []}
 
     total_devices = len(device_addrs)
-    daily_rates = []
 
     # 対象期間を決定
     if start_date is not None and end_date is not None:
-        # 日付範囲指定の場合
         try:
             start_dt = datetime.strptime(start_date, '%Y-%m-%d').date()
             end_dt = datetime.strptime(end_date, '%Y-%m-%d').date()
             if start_dt > end_dt:
                 raise HTTPException(status_code=400, detail="開始日は終了日より前である必要があります")
-            # 開始日から終了日までの日付リストを作成
             date_list = []
             current_date = start_dt
             while current_date <= end_dt:
@@ -1441,71 +1719,88 @@ async def get_overall_daily_operation_rate(
         except ValueError:
             raise HTTPException(status_code=400, detail="日付形式が不正です（YYYY-MM-DD）")
     elif year is not None and month is not None:
-        # 年月指定の場合：その月の1日～末日
-        import calendar
         days_in_month = calendar.monthrange(year, month)[1]
         date_list = [datetime(year, month, day).date() for day in range(1, days_in_month + 1)]
     else:
-        # 日数指定の場合（従来の動作）
         if days is None:
             days = 7
         date_list = [(datetime.now(jst) - timedelta(days=i)).date() for i in range(days - 1, -1, -1)]
 
-    # 各日のデータを取得
+    # 今日の営業日（6:00以降なら今日、6:00前なら昨日）
+    now_jst = datetime.now(jst)
+    today_business = now_jst.date() if now_jst.hour >= 6 else (now_jst - timedelta(days=1)).date()
+
+    daily_rates = []
     for target_date in date_list:
+        if target_date > today_business:
+            # 未来はデータなし
+            daily_rates.append({
+                "date": target_date.strftime('%m/%d'),
+                "rate_regular": 0,
+                "rate_overtime": 0
+            })
+            continue
 
-        # 6:00～翌6:00の時間範囲
-        start_time = jst.localize(datetime.combine(target_date, datetime.min.time()) + timedelta(hours=6))
-        end_time = start_time + timedelta(hours=24)
+        if target_date == today_business:
+            # 当日はリアルタイム計算
+            regular_start = jst.localize(datetime.combine(target_date, dtime(8, 0)))
+            regular_end = regular_start + timedelta(hours=18)
+            overtime_end = regular_start + timedelta(hours=21)
 
-        # この日の全デバイスの稼働率を計算
-        total_running_minutes = 0
-        total_possible_minutes = 0
+            # 現在時刻がウィンドウ内ならそこまで、まだ8:00前なら0
+            now_utc = datetime.utcnow()
+            regular_start_utc = regular_start.astimezone(utc).replace(tzinfo=None)
+            regular_end_utc = min(regular_end.astimezone(utc).replace(tzinfo=None), now_utc)
+            overtime_end_utc = min(overtime_end.astimezone(utc).replace(tzinfo=None), now_utc)
 
-        for device_addr in device_addrs:
-            # この日の履歴を取得
-            histories = db.query(DeviceHistory).filter(
-                DeviceHistory.device_addr == device_addr,
-                DeviceHistory.timestamp >= start_time.astimezone(utc).replace(tzinfo=None),
-                DeviceHistory.timestamp < end_time.astimezone(utc).replace(tzinfo=None)
-            ).order_by(DeviceHistory.timestamp).all()
-
-            if not histories:
+            if now_utc <= regular_start_utc:
+                daily_rates.append({
+                    "date": target_date.strftime('%m/%d'),
+                    "rate_regular": 0,
+                    "rate_overtime": 0
+                })
                 continue
 
-            # 各履歴間の時間を計算
-            for j in range(len(histories)):
-                current = histories[j]
+            total_run_r = 0
+            total_run_o = 0
+            for addr in device_addrs:
+                total_run_r += _calc_green_minutes(db, addr, regular_start_utc, regular_end_utc)
+                total_run_o += _calc_green_minutes(db, addr, regular_start_utc, overtime_end_utc)
 
-                if j < len(histories) - 1:
-                    next_record = histories[j + 1]
-                    duration_minutes = (next_record.timestamp - current.timestamp).total_seconds() / 60
-                else:
-                    # 最後のレコードは現在時刻または終了時刻まで
-                    if end_time <= datetime.now(jst):
-                        end_point = end_time.astimezone(utc).replace(tzinfo=None)
-                    else:
-                        end_point = datetime.now(utc).replace(tzinfo=None)
-                    duration_minutes = (end_point - current.timestamp).total_seconds() / 60
+            # 経過分数を分母にする（当日はまだウィンドウが完了していない）
+            elapsed_r = max(1, (regular_end_utc - regular_start_utc).total_seconds() / 60) * total_devices
+            elapsed_o = max(1, (overtime_end_utc - regular_start_utc).total_seconds() / 60) * total_devices
+            rate_r = round(total_run_r / elapsed_r * 100, 1)
+            rate_o = round(total_run_o / elapsed_o * 100, 1)
 
-                # 負の値を防ぐ
-                duration_minutes = max(0, duration_minutes)
-
-                total_possible_minutes += duration_minutes
-
-                if current.green:
-                    total_running_minutes += duration_minutes
-
-        # 稼働率を計算
-        if total_possible_minutes > 0:
-            operation_rate = round(total_running_minutes / total_possible_minutes * 100, 1)
+            daily_rates.append({
+                "date": target_date.strftime('%m/%d'),
+                "rate_regular": rate_r,
+                "rate_overtime": rate_o
+            })
         else:
-            operation_rate = 0
+            # 過去日は集計テーブルから取得
+            rows = db.query(DailyOperationRate).filter(
+                DailyOperationRate.target_date == target_date,
+                DailyOperationRate.device_addr.in_(device_addrs)
+            ).all()
 
-        daily_rates.append({
-            "date": target_date.strftime('%m/%d'),
-            "rate": operation_rate
-        })
+            if rows:
+                sum_run_r = sum(r.running_minutes_regular for r in rows)
+                sum_win_r = sum(r.window_minutes_regular for r in rows)
+                sum_run_o = sum(r.running_minutes_overtime for r in rows)
+                sum_win_o = sum(r.window_minutes_overtime for r in rows)
+                rate_r = round(sum_run_r / sum_win_r * 100, 1) if sum_win_r > 0 else 0
+                rate_o = round(sum_run_o / sum_win_o * 100, 1) if sum_win_o > 0 else 0
+            else:
+                rate_r = 0
+                rate_o = 0
+
+            daily_rates.append({
+                "date": target_date.strftime('%m/%d'),
+                "rate_regular": rate_r,
+                "rate_overtime": rate_o
+            })
 
     return {
         "total_devices": total_devices,
@@ -1519,28 +1814,34 @@ async def get_daily_green_apples(
     month: int = Query(default=None, description="月（省略時は今月）"),
     start_date: str = Query(default=None, description="開始日（YYYY-MM-DD形式）"),
     end_date: str = Query(default=None, description="終了日（YYYY-MM-DD形式）"),
+    location: Optional[str] = Query(default=None, description="絞り込む設置場所（省略時は全体）"),
     db: Session = Depends(get_db)
 ):
-    """GreenApple獲得数を取得（棒グラフ用）"""
+    """日次GREEN APPLE収穫量を取得（集計テーブルから取得、当日はリアルタイム計算）"""
     jst = pytz.timezone('Asia/Tokyo')
     utc = pytz.UTC
 
-    # 登録されているデバイス一覧を取得
-    registrations = db.query(DeviceRegistration).all()
-    device_addrs = [reg.device_addr for reg in registrations]
+    registrations = db.query(DeviceRegistration).filter(
+        DeviceRegistration.is_enabled == True
+    ).all()
+    if location:
+        device_addrs = [reg.device_addr for reg in registrations if reg.location == location]
+    else:
+        device_addrs = [reg.device_addr for reg in registrations]
 
     if not device_addrs:
         return {"data": []}
 
+    # locationキー（集計テーブルのlocation列に合わせる）
+    apple_location_key = location if location else ""
+
     # 対象期間を決定
     if start_date is not None and end_date is not None:
-        # 日付範囲指定の場合
         try:
             start_dt = datetime.strptime(start_date, '%Y-%m-%d').date()
             end_dt = datetime.strptime(end_date, '%Y-%m-%d').date()
             if start_dt > end_dt:
                 raise HTTPException(status_code=400, detail="開始日は終了日より前である必要があります")
-            # 開始日から終了日までの日付リストを作成
             date_list = []
             current_date = start_dt
             while current_date <= end_dt:
@@ -1549,149 +1850,48 @@ async def get_daily_green_apples(
         except ValueError:
             raise HTTPException(status_code=400, detail="日付形式が不正です（YYYY-MM-DD）")
     else:
-        # 年月指定の場合（従来の動作）
         now_jst = datetime.now(jst)
         if year is None:
             year = now_jst.year
         if month is None:
             month = now_jst.month
-
-        # その月の日数を取得
-        import calendar
         days_in_month = calendar.monthrange(year, month)[1]
         date_list = [datetime(year, month, day).date() for day in range(1, days_in_month + 1)]
 
+    now_jst = datetime.now(jst)
+    today_business = now_jst.date() if now_jst.hour >= 6 else (now_jst - timedelta(days=1)).date()
+
     daily_apples = []
-
-    # 各日のデータを取得
     for target_date in date_list:
+        if target_date > today_business:
+            daily_apples.append({
+                "date": target_date.strftime('%m/%d'),
+                "full_date": target_date.strftime('%Y-%m-%d'),
+                "apples": 0
+            })
+            continue
 
-        # 6:00～翌6:00の時間範囲
-        start_time = jst.localize(datetime.combine(target_date, datetime.min.time()) + timedelta(hours=6))
-        end_time = start_time + timedelta(hours=24)
-
-        # この日の時間別GreenApple獲得数を計算
-        daily_green_apples = 0
-        current_hour = start_time
-
-        while current_hour < end_time and current_hour <= datetime.now(jst):
-            next_hour = current_hour + timedelta(hours=1)
-
-            # この時間帯の各ステータスの合計時間（分）
-            total_running_minutes = 0
-            total_stop_yellow_minutes = 0
-            total_stop_red_minutes = 0
-            total_idle_minutes = 0
-
-            for device_addr in device_addrs:
-                # この時間帯の履歴を取得
-                histories = db.query(DeviceHistory).filter(
-                    DeviceHistory.device_addr == device_addr,
-                    DeviceHistory.timestamp >= current_hour.astimezone(utc).replace(tzinfo=None),
-                    DeviceHistory.timestamp < next_hour.astimezone(utc).replace(tzinfo=None)
-                ).order_by(DeviceHistory.timestamp).all()
-
-                # 直前の状態も取得
-                prev_history = db.query(DeviceHistory).filter(
-                    DeviceHistory.device_addr == device_addr,
-                    DeviceHistory.timestamp < current_hour.astimezone(utc).replace(tzinfo=None)
-                ).order_by(DeviceHistory.timestamp.desc()).first()
-
-                # 時間帯の終了時刻
-                period_end = min(next_hour, datetime.now(jst)).astimezone(utc).replace(tzinfo=None)
-
-                if not histories and not prev_history:
-                    duration_minutes = (period_end - current_hour.astimezone(utc).replace(tzinfo=None)).total_seconds() / 60
-                    total_idle_minutes += duration_minutes
-                    continue
-
-                # 時間帯開始時点の状態を決定
-                if histories:
-                    all_records = histories[:]
-                else:
-                    all_records = []
-
-                if prev_history:
-                    start_status = {
-                        'timestamp': current_hour.astimezone(utc).replace(tzinfo=None),
-                        'green': prev_history.green,
-                        'yellow': prev_history.yellow,
-                        'red': prev_history.red
-                    }
-                elif all_records:
-                    start_status = {
-                        'timestamp': current_hour.astimezone(utc).replace(tzinfo=None),
-                        'green': all_records[0].green,
-                        'yellow': all_records[0].yellow,
-                        'red': all_records[0].red
-                    }
-                else:
-                    start_status = {
-                        'timestamp': current_hour.astimezone(utc).replace(tzinfo=None),
-                        'green': False,
-                        'yellow': False,
-                        'red': False
-                    }
-
-                # 時間計算用のレコードリスト
-                time_records = [start_status]
-                for h in all_records:
-                    time_records.append({
-                        'timestamp': h.timestamp,
-                        'green': h.green,
-                        'yellow': h.yellow,
-                        'red': h.red
-                    })
-
-                # 各レコード間の時間を計算
-                for idx in range(len(time_records)):
-                    current_record = time_records[idx]
-
-                    if idx < len(time_records) - 1:
-                        next_timestamp = time_records[idx + 1]['timestamp']
-                    else:
-                        next_timestamp = period_end
-
-                    duration_minutes = (next_timestamp - current_record['timestamp']).total_seconds() / 60
-                    duration_minutes = max(0, duration_minutes)
-
-                    if current_record['green']:
-                        total_running_minutes += duration_minutes
-                    elif current_record['yellow']:
-                        total_stop_yellow_minutes += duration_minutes
-                    elif current_record['red']:
-                        total_stop_red_minutes += duration_minutes
-                    else:
-                        total_idle_minutes += duration_minutes
-
-            # 合計時間
-            total_minutes = total_running_minutes + total_stop_yellow_minutes + total_stop_red_minutes + total_idle_minutes
-
-            # 稼働率を計算
-            if total_minutes > 0:
-                running_percent = round(total_running_minutes / total_minutes * 100, 1)
-            else:
-                running_percent = 0
-
-            # GreenApple獲得数を計算
-            green_apples = 0
-            if running_percent >= 50:
-                green_apples = 5
-            elif running_percent >= 40:
-                green_apples = 3
-            elif running_percent >= 35:
-                green_apples = 2
-            elif running_percent > 30:
-                green_apples = 1
-
-            daily_green_apples += green_apples
-            current_hour = next_hour
-
-        daily_apples.append({
-            "date": target_date.strftime('%m/%d'),
-            "full_date": target_date.strftime('%Y-%m-%d'),
-            "apples": daily_green_apples
-        })
+        if target_date == today_business:
+            # 当日はリアルタイム計算
+            day_start = jst.localize(datetime.combine(target_date, dtime(6, 0)))
+            day_end = day_start + timedelta(hours=24)
+            apples = _calc_apples_for_day(db, device_addrs, day_start, day_end)
+            daily_apples.append({
+                "date": target_date.strftime('%m/%d'),
+                "full_date": target_date.strftime('%Y-%m-%d'),
+                "apples": apples
+            })
+        else:
+            # 過去日は集計テーブルから取得
+            row = db.query(DailyGreenAppleCount).filter(
+                DailyGreenAppleCount.target_date == target_date,
+                DailyGreenAppleCount.location == apple_location_key
+            ).first()
+            daily_apples.append({
+                "date": target_date.strftime('%m/%d'),
+                "full_date": target_date.strftime('%Y-%m-%d'),
+                "apples": row.apple_count if row else 0
+            })
 
     return {
         "data": daily_apples

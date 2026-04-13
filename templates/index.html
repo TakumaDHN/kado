@@ -242,9 +242,14 @@
         <!-- デバイス一覧 -->
         <div class="row">
             <div class="col-12 mb-3">
-                <h3 class="text-cyan text-glow">
-                    <i class="bi bi-buildings"></i> 設備稼働状況（全7台）
-                </h3>
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <h3 class="text-cyan text-glow mb-0">
+                        <i class="bi bi-buildings"></i> <span id="deviceListTitle">設備稼働状況（全設置場所）</span>
+                    </h3>
+                    <div id="deviceFilterButtons" class="d-flex align-items-center gap-2 flex-wrap">
+                        <span class="text-muted small">フィルター:</span>
+                    </div>
+                </div>
             </div>
             <div class="col-12">
                 <div id="deviceList" class="row g-3">
@@ -319,6 +324,11 @@
                             <i class="bi bi-graph-up"></i> 稼働率推移
                         </h5>
                         <div class="d-flex align-items-center gap-2">
+                            <div class="btn-group btn-group-sm" id="operationRateToggle">
+                                <button class="btn btn-sm btn-outline-info active" data-mode="both" onclick="toggleOperationRate('both', this)">両方</button>
+                                <button class="btn btn-sm btn-outline-info" data-mode="regular" onclick="toggleOperationRate('regular', this)">定時内</button>
+                                <button class="btn btn-sm btn-outline-info" data-mode="overtime" onclick="toggleOperationRate('overtime', this)">含残業</button>
+                            </div>
                             <label class="text-muted small mb-0">期間:</label>
                             <input type="date" id="operationStartDate" class="form-control form-control-sm"
                                 style="width: auto;" onchange="updateMonthlyCharts()">
@@ -611,6 +621,7 @@
         let devices = {};
         let overallStatusChart, hourlyStatusChart, dailyOperationChart, dailyGreenAppleChart;
         let currentColumns = 3; // デフォルトは3列
+        let selectedLocation = null; // デバイスフィルター（null = 全デバイス）
 
         // 列数設定を読み込み
         function loadColumnSetting() {
@@ -774,6 +785,7 @@
 
                 renderDevices();
                 updateStatistics();
+                buildFilterButtons();
             } catch (error) {
                 console.error('デバイス取得エラー:', error);
             }
@@ -836,7 +848,13 @@
             const container = document.getElementById('deviceList');
             container.innerHTML = '';
 
-            Object.values(devices).forEach(device => {
+            // フィルタ処理（indexでソート）
+            const devicesToShow = (selectedLocation
+                ? Object.values(devices).filter(d => d.location === selectedLocation)
+                : Object.values(devices)
+            ).sort((a, b) => (a.index || 999) - (b.index || 999));
+
+            devicesToShow.forEach(device => {
                 const card = createDeviceCard(device);
                 container.appendChild(card);
 
@@ -1035,12 +1053,18 @@
 
         // 統計情報を更新
         function updateStatistics() {
-            const deviceArray = Object.values(devices);
+            const allDeviceArray = Object.values(devices);
+
+            // フィルタに基づいてデバイスを絞り込み
+            const filteredDevices = selectedLocation
+                ? allDeviceArray.filter(d => d.location === selectedLocation)
+                : allDeviceArray;
 
             // アクティブなデバイスのみカウント
-            const activeDevices = deviceArray.filter(d => d.is_active);
+            const activeDevices = filteredDevices.filter(d => d.is_active);
+            const totalCount = selectedLocation ? filteredDevices.length : 7;
 
-            document.getElementById('deviceCount').textContent = activeDevices.length + ' / 7';
+            document.getElementById('deviceCount').textContent = activeDevices.length + ' / ' + totalCount;
 
             // ライト状態から判定（アクティブなデバイスのみ）
             const runningCount = activeDevices.filter(d => d.green).length;  // 緑ライト = 稼働中
@@ -1203,14 +1227,14 @@
                 }
             });
 
-            // 日次稼働率折れ線グラフ
+            // 日次稼働率折れ線グラフ（定時内/含残業の2系列）
             const dailyOperationCtx = document.getElementById('dailyOperationChart').getContext('2d');
             dailyOperationChart = new Chart(dailyOperationCtx, {
                 type: 'line',
                 data: {
                     labels: [],
                     datasets: [{
-                        label: '全体稼働率 (%)',
+                        label: '定時内 (8:00-翌2:00)',
                         data: [],
                         borderColor: '#00d9ff',
                         backgroundColor: 'rgba(0, 217, 255, 0.1)',
@@ -1218,6 +1242,18 @@
                         borderWidth: 3,
                         pointBackgroundColor: '#00d9ff',
                         pointBorderColor: '#00d9ff',
+                        pointRadius: 5,
+                        pointHoverRadius: 7,
+                        fill: true
+                    }, {
+                        label: '含残業 (8:00-翌5:00)',
+                        data: [],
+                        borderColor: '#ff9f43',
+                        backgroundColor: 'rgba(255, 159, 67, 0.1)',
+                        tension: 0.4,
+                        borderWidth: 3,
+                        pointBackgroundColor: '#ff9f43',
+                        pointBorderColor: '#ff9f43',
                         pointRadius: 5,
                         pointHoverRadius: 7,
                         fill: true
@@ -1234,6 +1270,13 @@
                                     size: 14
                                 }
                             }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function (context) {
+                                    return context.dataset.label + ': ' + context.parsed.y + '%';
+                                }
+                            }
                         }
                     },
                     scales: {
@@ -1247,7 +1290,6 @@
                         },
                         y: {
                             beginAtZero: true,
-                            max: 100,
                             grid: {
                                 color: 'rgba(0, 217, 255, 0.1)'
                             },
@@ -1314,9 +1356,9 @@
                             },
                             ticks: {
                                 color: '#b0b8c9',
-                                stepSize: 1,
                                 callback: function (value) {
-                                    return value + '個';
+                                    if (Number.isInteger(value)) return value + '個';
+                                    return '';
                                 }
                             }
                         }
@@ -1424,8 +1466,11 @@
         // 全体稼働率グラフを更新
         async function updateOverallCharts() {
             try {
+                // 設置場所フィルタパラメータ
+                const filterParam = selectedLocation ? `&location=${encodeURIComponent(selectedLocation)}` : '';
+
                 // 現在の全体ステータス（円グラフ）
-                const statusResponse = await fetch('/api/overall/current-status');
+                const statusResponse = await fetch(`/api/overall/current-status${selectedLocation ? '?location=' + encodeURIComponent(selectedLocation) : ''}`);
 
                 if (!statusResponse.ok) {
                     throw new Error(`HTTPエラー: ${statusResponse.status}`);
@@ -1453,7 +1498,7 @@
                 const dateStr = formatDateLocal(targetDate);
 
                 // 時間帯別稼働推移（積上げ棒グラフ）
-                const hourlyResponse = await fetch(`/api/overall/hourly-status?date=${dateStr}`);
+                const hourlyResponse = await fetch(`/api/overall/hourly-status?date=${dateStr}${filterParam}`);
 
                 if (!hourlyResponse.ok) {
                     throw new Error(`HTTPエラー: ${hourlyResponse.status}`);
@@ -1561,41 +1606,81 @@
             }
         }
 
+        // 稼働率グラフの表示モード（both / regular / overtime）
+        let operationRateMode = 'both';
+
+        function toggleOperationRate(mode, btn) {
+            operationRateMode = mode;
+            // ボタンのアクティブ状態を切り替え
+            document.querySelectorAll('#operationRateToggle button').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+
+            if (!dailyOperationChart) return;
+            // データセット表示/非表示
+            dailyOperationChart.data.datasets[0].hidden = (mode === 'overtime');
+            dailyOperationChart.data.datasets[1].hidden = (mode === 'regular');
+            adjustOperationYAxis();
+            dailyOperationChart.update();
+        }
+
+        function adjustOperationYAxis() {
+            if (!dailyOperationChart) return;
+            let allValues = [];
+            dailyOperationChart.data.datasets.forEach(ds => {
+                if (!ds.hidden) {
+                    allValues = allValues.concat(ds.data.filter(v => v != null));
+                }
+            });
+            const maxVal = allValues.length > 0 ? Math.max(...allValues) : 0;
+            // 最大値を10の倍数に切り上げ + 余白
+            dailyOperationChart.options.scales.y.max = Math.max(10, Math.ceil(maxVal / 10) * 10 + 5);
+        }
+
+        function adjustAppleYAxis() {
+            if (!dailyGreenAppleChart) return;
+            const data = dailyGreenAppleChart.data.datasets[0].data;
+            const maxVal = data.length > 0 ? Math.max(...data) : 0;
+            dailyGreenAppleChart.options.scales.y.suggestedMax = Math.max(5, maxVal + Math.ceil(maxVal * 0.15));
+        }
+
         // 月次グラフを更新（稼働率推移とGreenApple収穫量）
         async function updateMonthlyCharts() {
             try {
-                // 稼働率推移グラフの日付範囲を取得
                 const operationStartDate = document.getElementById('operationStartDate').value;
                 const operationEndDate = document.getElementById('operationEndDate').value;
-
-                // GreenApple収穫量グラフの日付範囲を取得
                 const appleStartDate = document.getElementById('appleStartDate').value;
                 const appleEndDate = document.getElementById('appleEndDate').value;
 
-                // 稼働率推移（折れ線グラフ）
+                const filterParam = selectedLocation ? `&location=${encodeURIComponent(selectedLocation)}` : '';
+
+                // 稼働率推移（折れ線グラフ - 定時内/含残業の2系列）
                 if (operationStartDate && operationEndDate) {
-                    const dailyResponse = await fetch(`/api/overall/daily-operation-rate?start_date=${operationStartDate}&end_date=${operationEndDate}`);
+                    const dailyResponse = await fetch(`/api/overall/daily-operation-rate?start_date=${operationStartDate}&end_date=${operationEndDate}${filterParam}`);
                     const dailyData = await dailyResponse.json();
 
                     if (dailyOperationChart && dailyData.data) {
                         dailyOperationChart.data.labels = dailyData.data.map(d => d.date);
-                        dailyOperationChart.data.datasets[0].data = dailyData.data.map(d => d.rate);
+                        dailyOperationChart.data.datasets[0].data = dailyData.data.map(d => d.rate_regular);
+                        dailyOperationChart.data.datasets[1].data = dailyData.data.map(d => d.rate_overtime);
+                        // 表示モードを反映
+                        dailyOperationChart.data.datasets[0].hidden = (operationRateMode === 'overtime');
+                        dailyOperationChart.data.datasets[1].hidden = (operationRateMode === 'regular');
+                        adjustOperationYAxis();
                         dailyOperationChart.update();
                     }
                 }
 
                 // GreenApple収穫量（棒グラフ）
                 if (appleStartDate && appleEndDate) {
-                    const dailyApplesResponse = await fetch(`/api/overall/daily-green-apples?start_date=${appleStartDate}&end_date=${appleEndDate}`);
+                    const dailyApplesResponse = await fetch(`/api/overall/daily-green-apples?start_date=${appleStartDate}&end_date=${appleEndDate}${filterParam}`);
                     const dailyApplesData = await dailyApplesResponse.json();
 
                     if (dailyGreenAppleChart && dailyApplesData.data) {
-                        // グラフデータを更新
                         dailyGreenAppleChart.data.labels = dailyApplesData.data.map(d => d.date);
                         dailyGreenAppleChart.data.datasets[0].data = dailyApplesData.data.map(d => d.apples);
+                        adjustAppleYAxis();
                         dailyGreenAppleChart.update();
 
-                        // 完全な日付データを保存（クリック時に使用）
                         dailyGreenAppleChartData = dailyApplesData.data.map(d => d.full_date);
                     }
                 }
@@ -1610,6 +1695,67 @@
             const month = String(date.getMonth() + 1).padStart(2, '0');
             const day = String(date.getDate()).padStart(2, '0');
             return `${year}-${month}-${day}`;
+        }
+
+        // ========== デバイスフィルタ機能 ==========
+
+        // フィルタボタンを構築
+        function buildFilterButtons() {
+            const container = document.getElementById('deviceFilterButtons');
+            if (!container) return;
+
+            // コンテナをリセット
+            container.innerHTML = '<span class="text-muted small">フィルター:</span>';
+
+            // 全設置場所ボタン
+            const allBtn = document.createElement('button');
+            allBtn.id = 'filter-all';
+            allBtn.className = selectedLocation === null ? 'btn-modern' : 'btn-secondary-modern';
+            allBtn.onclick = () => setLocationFilter(null);
+            allBtn.innerHTML = '<i class="bi bi-grid"></i> 全設置場所';
+            container.appendChild(allBtn);
+
+            // 設置場所ボタン（ユニークな場所のみ・ソート済み）
+            const locations = [...new Set(
+                Object.values(devices).map(d => d.location).filter(l => l)
+            )].sort();
+            locations.forEach(loc => {
+                const btn = document.createElement('button');
+                btn.id = `filter-loc-${loc}`;
+                btn.className = selectedLocation === loc ? 'btn-modern' : 'btn-secondary-modern';
+                btn.onclick = () => setLocationFilter(loc);
+                btn.textContent = loc;
+                btn.style.fontSize = '0.85rem';
+                btn.style.padding = '0.3rem 0.6rem';
+                container.appendChild(btn);
+            });
+        }
+
+        // 設置場所フィルタを設定
+        function setLocationFilter(loc) {
+            selectedLocation = loc;
+
+            // タイトルを更新
+            const titleEl = document.getElementById('deviceListTitle');
+            if (titleEl) {
+                if (loc) {
+                    titleEl.textContent = `設備稼働状況 - ${loc}`;
+                } else {
+                    titleEl.textContent = '設備稼働状況（全設置場所）';
+                }
+            }
+
+            // フィルタボタンのスタイルを更新
+            buildFilterButtons();
+
+            // デバイスカードを更新
+            renderDevices();
+
+            // 統計を更新
+            updateStatistics();
+
+            // グラフを更新（全体稼働率・時間帯別・稼働率推移・GreenApple）
+            updateOverallCharts();
         }
 
         // 日付入力フィールドを初期化

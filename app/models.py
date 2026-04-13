@@ -1,7 +1,7 @@
 """
 データベースモデル定義
 """
-from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime
+from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, Date, UniqueConstraint
 from datetime import datetime
 from .database import Base
 
@@ -68,3 +68,34 @@ class DeviceRegistration(Base):
     is_enabled = Column(Boolean, default=True)  # 有効/無効
     created_at = Column(DateTime, default=datetime.utcnow)  # 作成日時
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)  # 更新日時
+
+
+class DailyOperationRate(Base):
+    """日次稼働率の集計データ（毎朝6:00に前日分を計算して保存）"""
+    __tablename__ = "daily_operation_rate"
+    __table_args__ = (
+        UniqueConstraint('device_addr', 'target_date', name='uq_daily_op_device_date'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    device_addr = Column(String, index=True, nullable=False)
+    target_date = Column(Date, index=True, nullable=False)
+    running_minutes_regular = Column(Float, default=0.0)    # 定時内(8:00-翌2:00)の稼働分数
+    window_minutes_regular = Column(Float, default=1080.0)  # 定時内ウィンドウ=18h=1080min
+    running_minutes_overtime = Column(Float, default=0.0)   # 含残業(8:00-翌5:00)の稼働分数
+    window_minutes_overtime = Column(Float, default=1260.0) # 含残業ウィンドウ=21h=1260min
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class DailyGreenAppleCount(Base):
+    """日次GREEN APPLE収穫量の集計データ（毎朝6:00に前日分を計算して保存）"""
+    __tablename__ = "daily_green_apple_count"
+    __table_args__ = (
+        UniqueConstraint('target_date', 'location', name='uq_daily_apple_date_location'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    target_date = Column(Date, index=True, nullable=False)
+    location = Column(String, default="", index=True)  # ""=全体, それ以外=設置場所別
+    apple_count = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)

@@ -145,8 +145,8 @@ class MQTTClient:
             # 非ブロッキングループを開始
             self.client.loop_start()
         except Exception as e:
-            logger.error(f"MQTT接続エラー: {e}")
-            raise
+            logger.warning(f"MQTT接続スキップ（ブローカー未起動）: {e}")
+            logger.warning("MQTT無しでアプリを起動します。既存DBデータは閲覧可能です。")
 
     def stop(self):
         """MQTTクライアントを停止"""
